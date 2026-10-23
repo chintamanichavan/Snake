@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.chavan.snake"
-        minSdk = 26
+        minSdk = 30
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
