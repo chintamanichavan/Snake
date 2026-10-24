@@ -3,6 +3,7 @@ package dev.chavan.snake
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.View
 
@@ -54,7 +55,8 @@ class PhoneFeedback(private val view: View) : Feedback {
             t.reloadStaticData()
             t.play()
         } catch (e: IllegalStateException) {
-            // Audio was taken away mid-game (e.g. by a call); a missed blip is fine.
+            // Audio was taken away mid-game (e.g. by a call). A missed blip must not end the game, but say so.
+            Log.w(TAG, "could not play sound", e)
         }
     }
 
@@ -79,8 +81,14 @@ class PhoneFeedback(private val view: View) : Feedback {
         t.write(samples, 0, samples.size)
         t
     } catch (e: UnsupportedOperationException) {
+        Log.w(TAG, "no sound: the phone refused an audio track", e)
         null
     } catch (e: IllegalStateException) {
+        Log.w(TAG, "no sound: the phone refused an audio track", e)
         null
+    }
+
+    private companion object {
+        const val TAG = "Snake"
     }
 }
