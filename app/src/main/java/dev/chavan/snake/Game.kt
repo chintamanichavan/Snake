@@ -47,6 +47,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         for (i in 0 until 3) snake.addLast(Cell(cols / 4 + 2 - i, y))
         dir = Dir.RIGHT
         leftTail = null
+        retakeable = false
         fresh = true
         turns.clear()
         score = 0
@@ -73,6 +74,25 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         }
     }
 
+    /** True while the last step was a plain move that retake() may redo. */
+    private var retakeable = false
+
+    /**
+     * Redoes the last step in direction d, as if the turn had arrived in time. Swipes made just
+     * after a step would otherwise wait a whole tick. Only for a plain move (no eating, no crash),
+     * once per step, with no other turn waiting. Returns whether it happened.
+     */
+    fun retake(d: Dir): Boolean {
+        val tail = leftTail
+        if (!retakeable || tail == null || turns.isNotEmpty() || d == dir || d.isOpposite(dir)) return false
+        snake.removeFirst()
+        snake.addLast(tail)
+        dir = d
+        step()
+        retakeable = false
+        return true
+    }
+
     fun turn(d: Dir) {
         if (over || turns.size >= 2) return
         val last = turns.lastOrNull() ?: dir
@@ -84,6 +104,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
     fun step(): Boolean {
         if (over) return false
         fresh = false
+        retakeable = false
         turns.removeFirstOrNull()?.let { dir = it }
         val next = snake.first() + dir
         val eats = next == food
@@ -108,6 +129,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
             leftTail = null
         } else {
             leftTail = snake.removeLast()
+            retakeable = true
         }
         return eats
     }

@@ -288,4 +288,32 @@ class SnakeViewTest {
         swipe(2f, 1f) // a finger never lands perfectly still
         assertEquals(SnakeView.State.PAUSED, view.state)
     }
+
+    @Test fun aSwipeJustAfterAStepTurnsAtOnce() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0)
+        onUi { view.tick() }
+        val head = view.game!!.snake.first()
+        now += Game.tickMillis(0) / 10 // the head has barely left its cell
+        swipe(0f, -200f)
+        assertEquals(Dir.UP, view.game!!.dir) // turned without waiting for the next tick
+        assertEquals(Cell(head.x - 1, head.y - 1), view.game!!.snake.first())
+    }
+
+    @Test fun aSwipeLateInAStepWaitsForTheNextOne() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0)
+        onUi { view.tick() }
+        val head = view.game!!.snake.first()
+        now += Game.tickMillis(0) / 2
+        swipe(0f, -200f)
+        assertEquals(Dir.RIGHT, view.game!!.dir)
+        assertEquals(head, view.game!!.snake.first())
+        onUi { view.tick() }
+        assertEquals(Dir.UP, view.game!!.dir)
+    }
 }

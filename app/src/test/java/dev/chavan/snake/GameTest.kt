@@ -145,4 +145,62 @@ class GameTest {
         g.reset()
         assertTrue(g.fresh)
     }
+
+    @Test fun retakeRedoesTheLastStepInTheNewDirection() {
+        val g = game()
+        g.food = Cell(0, 0)
+        g.step() // head (5,5), moving right
+        assertTrue(g.retake(Dir.UP))
+        assertEquals(Dir.UP, g.dir)
+        assertEquals(listOf(Cell(4, 4), Cell(4, 5), Cell(3, 5)), g.snake.toList())
+        assertEquals(Cell(2, 5), g.leftTail)
+    }
+
+    @Test fun retakeOnlyOncePerStep() {
+        val g = game()
+        g.food = Cell(0, 0)
+        g.step()
+        assertTrue(g.retake(Dir.UP))
+        assertFalse(g.retake(Dir.LEFT))
+    }
+
+    @Test fun retakeRefusesReversalsAndSameDirection() {
+        val g = game()
+        g.food = Cell(0, 0)
+        g.step()
+        assertFalse(g.retake(Dir.LEFT))
+        assertFalse(g.retake(Dir.RIGHT))
+        assertEquals(Cell(5, 5), g.snake.first())
+    }
+
+    @Test fun noRetakeAfterEatingOrBeforeMoving() {
+        val g = game()
+        assertFalse(g.retake(Dir.UP)) // not moved yet
+        g.food = Cell(5, 5)
+        assertTrue(g.step()) // ate
+        assertFalse(g.retake(Dir.UP))
+    }
+
+    @Test fun noRetakeWhileATurnIsQueued() {
+        val g = game()
+        g.food = Cell(0, 0)
+        g.step()
+        g.turn(Dir.UP)
+        assertFalse(g.retake(Dir.DOWN))
+    }
+
+    @Test fun retakeCanEatAndCanCrash() {
+        val g = game()
+        g.food = Cell(4, 4) // above where the head was
+        g.step()
+        assertTrue(g.retake(Dir.UP))
+        assertEquals(1, g.score)
+
+        val h = Game(10, 10, Random(1))
+        h.food = Cell(0, 0)
+        repeat(5) { h.step() } // head (9,5) against the right wall
+        h.turn(Dir.UP); h.step() // head (9,4), moving up
+        assertTrue(h.retake(Dir.RIGHT)) // redo that step going right: into the wall
+        assertTrue(h.over)
+    }
 }

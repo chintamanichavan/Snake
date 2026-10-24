@@ -38,6 +38,15 @@ class SnakeView(context: Context) : View(context) {
     private var stepAt = 0L
     private var stepMillis = 1L
 
+    /** Frames drawn while running, and how many of them showed the snake standing still. */
+    var runningFrames = 0
+        private set
+    var stalledFrames = 0
+        private set
+
+    /** Called with the clock time whenever a step sends the snake in a new direction. For measuring. */
+    var onTurned: (Long) -> Unit = {}
+
     /** Sound and vibration. Tests swap in a recorder. */
     var feedback: Feedback = PhoneFeedback(this)
 
@@ -156,18 +165,25 @@ class SnakeView(context: Context) : View(context) {
         if (state != State.RUNNING) return
         stepMillis = Game.tickMillis(g.score)
         val eaten = g.food
+        val before = g.dir
         val ate = g.step()
         stepAt = clock()
+        afterStep(g, before, ate, eaten, stepAt)
+    }
+
+    /** Effects of a step, whether a normal one or a re-taken one: turning, eating, crashing, winning. */
+    private fun afterStep(g: Game, before: Dir, ate: Boolean, eaten: Cell?, at: Long) {
+        if (g.dir != before) onTurned(at)
         if (ate && eaten != null) {
             particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 14, 3.2f, FOOD)
             particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 6, 2f, HEAD, size = 0.09f)
-            foodAt = stepAt
-            scoreAt = stepAt
+            foodAt = at
+            scoreAt = at
             feedback.eat(g.score)
         }
         if (g.over) {
             state = State.OVER
-            crashAt = stepAt
+            crashAt = at
             if (g.won) {
                 // A full board: confetti from every segment instead of a crash.
                 g.snake.forEachIndexed { i, c -> if (i % 3 == 0) particles.burst(c.x.toFloat(), c.y.toFloat(), 5, 3f, segmentColor(i, g.snake.size)) }
@@ -273,7 +289,18 @@ class SnakeView(context: Context) : View(context) {
         when (state) {
             State.READY -> { g.aim(d); start() }
             State.PAUSED -> { g.turn(d); start() }
-            State.RUNNING -> g.turn(d)
+            State.RUNNING -> {
+                // A swipe just after a step redoes that step in the new direction instead of
+                // waiting a whole tick. The slide timing is kept, so the head turns the corner in motion.
+                val eaten = g.food
+                val before = g.dir
+                val score = g.score
+                if (progress(clock(), stepAt, stepMillis) < RETAKE_WINDOW && g.retake(d)) {
+                    afterStep(g, before, g.score > score, eaten, clock())
+                } else {
+                    g.turn(d)
+                }
+            }
             State.OVER -> {}
         }
     }
@@ -340,6 +367,10 @@ class SnakeView(context: Context) : View(context) {
 
         // Between steps the snake slides, so redraw every frame while it moves or anything is animating.
         val t = if (state == State.RUNNING) progress(now, stepAt, stepMillis) else 1f
+        if (state == State.RUNNING && !g.fresh) {
+            runningFrames++
+            if (t >= 1f) stalledFrames++
+        }
         val settling = state == State.OVER && now - crashAt < OVERLAY_DELAY_MS + OVERLAY_FADE_MS
         if (state == State.RUNNING || particles.alive || now - foodAt < FOOD_POP_MS || settling) postInvalidateOnAnimation()
         val line = snakeLine(g.snake, g.leftTail, t)
@@ -473,6 +504,8 @@ class SnakeView(context: Context) : View(context) {
     companion object {
         const val COLS = 16
         const val FOOD_POP_MS = 280L
+        /** How early in a step a swipe may redo it. Later than this the head would visibly jump. */
+        const val RETAKE_WINDOW = 0.25f
         const val OVERLAY_DELAY_MS = 650L
         const val OVERLAY_FADE_MS = 250L
 
