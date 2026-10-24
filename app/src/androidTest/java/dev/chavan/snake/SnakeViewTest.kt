@@ -104,4 +104,25 @@ class SnakeViewTest {
         assertEquals(SnakeView.HEAD, behind)
         assertEquals(SnakeView.FOOD, centre(view.game!!.food!!))
     }
+
+    @Test fun snakeSlidesSmoothlyBetweenCells() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0) // keep food out of the way
+        onUi { view.tick() }
+        val l = view.layout!!
+        val head = view.game!!.snake.first()
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        fun at(fx: Float) = bmp.getPixel((l.left + (head.x + fx) * l.cell).toInt(), l.top + head.y * l.cell + l.cell / 2)
+
+        now += Game.tickMillis(0) / 2 // halfway through the step
+        onUi { view.draw(Canvas(bmp)) }
+        assertTrue(at(0.5f) != SnakeView.HEAD) // the head has not reached its new cell's centre yet
+        assertEquals(SnakeView.HEAD, at(-0.1f)) // it is half a cell back
+
+        now += Game.tickMillis(0) // the step has finished
+        onUi { view.draw(Canvas(bmp)) }
+        assertEquals(SnakeView.HEAD, at(0.5f))
+    }
 }

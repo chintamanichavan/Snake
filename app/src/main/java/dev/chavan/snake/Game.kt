@@ -27,6 +27,10 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
     var won = false
         private set
 
+    /** The cell the tail moved off on the last step, or null if the snake grew. Drawing slides the tail out of it. */
+    var leftTail: Cell? = null
+        private set
+
     // Turns made between ticks are queued, so two fast swipes (up, then left) both happen
     // instead of the second overwriting the first. Each is checked against the one before it,
     // which stops a quick pair of turns from reversing the snake into itself.
@@ -42,6 +46,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         val y = rows / 2
         for (i in 0 until 3) snake.addLast(Cell(cols / 4 + 2 - i, y))
         dir = Dir.RIGHT
+        leftTail = null
         turns.clear()
         score = 0
         over = false
@@ -80,8 +85,9 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
                 won = true
                 over = true
             }
+            leftTail = null
         } else {
-            snake.removeLast()
+            leftTail = snake.removeLast()
         }
         return eats
     }

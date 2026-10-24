@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 
@@ -28,6 +29,13 @@ class SnakeView(context: Context) : View(context) {
     /** Tests turn this off and call tick() themselves so nothing depends on timing. */
     var autoTick = true
 
+    /** Time source for animation. Tests replace it to freeze or advance time. */
+    var clock: () -> Long = { SystemClock.uptimeMillis() }
+
+    /** When the last step happened and how long it is meant to last, for sliding between cells. */
+    private var stepAt = 0L
+    private var stepMillis = 1L
+
     /** Space kept clear of the status bar, gesture bar and camera cutout. */
     var insetTop = 0
     var insetBottom = 0
@@ -40,7 +48,10 @@ class SnakeView(context: Context) : View(context) {
 
     private val board = Paint().apply { color = BOARD }
     private val checker = Paint().apply { color = CHECKER }
-    private val body = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
     private val food = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = FOOD }
     private val eye = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BACKGROUND }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -108,7 +119,9 @@ class SnakeView(context: Context) : View(context) {
     fun tick() {
         val g = game ?: return
         if (state != State.RUNNING) return
+        stepMillis = Game.tickMillis(g.score)
         g.step()
+        stepAt = clock()
         if (g.over) {
             state = State.OVER
             if (g.score > best) best = g.score
@@ -180,7 +193,6 @@ class SnakeView(context: Context) : View(context) {
         drawHud(canvas, g)
 
         val c = l.cell.toFloat()
-        val r = c * 0.18f
         rect.set(l.left.toFloat(), l.top.toFloat(), (l.left + l.width).toFloat(), (l.top + l.height).toFloat())
         canvas.drawRoundRect(rect, dp(10f), dp(10f), board)
         canvas.save()
@@ -198,18 +210,26 @@ class SnakeView(context: Context) : View(context) {
             canvas.drawCircle(l.left + (it.x + 0.5f) * c, l.top + (it.y + 0.5f) * c, c * 0.36f, food)
         }
 
-        // Fade from bright head to a deeper tail so direction reads at a glance.
-        val n = g.snake.size
-        val inset = c * 0.08f
-        for (i in n - 1 downTo 0) {
-            val s = g.snake[i]
-            body.color = blend(HEAD, TAIL, if (n > 1) i / (n - 1f) else 0f)
-            val px = l.left + s.x * c
-            val py = l.top + s.y * c
-            rect.set(px + inset, py + inset, px + c - inset, py + c - inset)
-            canvas.drawRoundRect(rect, r, r, body)
+        // Between steps the snake slides, so redraw every frame while it moves.
+        val t = if (state == State.RUNNING) progress(clock(), stepAt, stepMillis) else 1f
+        if (state == State.RUNNING) postInvalidateOnAnimation()
+        val line = snakeLine(g.snake, g.leftTail, t)
+
+        // One rounded tube, drawn tail first so the head sits on top. Each piece fades from a
+        // bright head to a deeper tail so direction reads at a glance.
+        body.strokeWidth = c * 0.76f
+        val n = line.size
+        for (i in n - 2 downTo 0) {
+            body.color = blend(HEAD, TAIL, if (n > 2) i / (n - 2f) else 0f)
+            val a = line[i + 1]
+            val b = line[i]
+            canvas.drawLine(px(l, a.x), py(l, a.y), px(l, b.x), py(l, b.y), body)
         }
-        drawEyes(canvas, l, g)
+        if (n == 1) {
+            body.color = HEAD
+            canvas.drawPoint(px(l, line[0].x), py(l, line[0].y), body)
+        }
+        drawEyes(canvas, l, g, line[0])
 
         when (state) {
             State.READY -> overlay(canvas, l, "Snake", "Swipe to start")
@@ -234,11 +254,14 @@ class SnakeView(context: Context) : View(context) {
         number.textAlign = Paint.Align.LEFT
     }
 
-    private fun drawEyes(canvas: Canvas, l: BoardLayout, g: Game) {
-        val h = g.snake.first()
+    /** Screen position of the centre of a point given in cell units. */
+    private fun px(l: BoardLayout, x: Float) = l.left + (x + 0.5f) * l.cell
+    private fun py(l: BoardLayout, y: Float) = l.top + (y + 0.5f) * l.cell
+
+    private fun drawEyes(canvas: Canvas, l: BoardLayout, g: Game, head: Pos) {
         val c = l.cell.toFloat()
-        val cx = l.left + (h.x + 0.5f) * c
-        val cy = l.top + (h.y + 0.5f) * c
+        val cx = px(l, head.x)
+        val cy = py(l, head.y)
         val ahead = c * 0.14f
         val apart = c * 0.18f
         val d = g.dir
