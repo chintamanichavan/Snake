@@ -122,6 +122,11 @@ class SnakeView(context: Context) : View(context) {
             foodAt = clock()
         }
         layout = l
+        // Swipes from the screen's side edges would otherwise be taken as Android's back gesture.
+        // Android honours at most 200dp of each edge, so cover the middle of the board.
+        val band = minOf(l.height, (200 * density).toInt())
+        val mid = l.top + l.height / 2
+        systemGestureExclusionRects = listOf(android.graphics.Rect(0, mid - band / 2, width, mid + band / 2))
         invalidate()
     }
 
@@ -194,7 +199,8 @@ class SnakeView(context: Context) : View(context) {
                     swiped = true
                     downX = e.x; downY = e.y
                     when (state) {
-                        State.READY, State.PAUSED -> { g.turn(d); start() }
+                        State.READY -> { g.aim(d); start() }
+                        State.PAUSED -> { g.turn(d); start() }
                         State.RUNNING -> g.turn(d)
                         State.OVER -> {}
                     }

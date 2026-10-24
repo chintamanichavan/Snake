@@ -47,11 +47,30 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         for (i in 0 until 3) snake.addLast(Cell(cols / 4 + 2 - i, y))
         dir = Dir.RIGHT
         leftTail = null
+        fresh = true
         turns.clear()
         score = 0
         over = false
         won = false
         food = randomEmptyCell()
+    }
+
+    /** True until the first step, while the snake can still be pointed any way, including backwards. */
+    var fresh = true
+        private set
+
+    /**
+     * Sets the starting direction. Before the first step a "reverse" is allowed: the snake is turned
+     * end to end, so every swipe can start the game. Once moving, this is an ordinary turn.
+     */
+    fun aim(d: Dir) {
+        if (!fresh) return turn(d)
+        if (d.isOpposite(dir)) {
+            snake.reverse()
+            dir = d
+        } else {
+            turn(d)
+        }
     }
 
     fun turn(d: Dir) {
@@ -64,6 +83,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
     /** Advances one tick. Returns true if the snake ate. */
     fun step(): Boolean {
         if (over) return false
+        fresh = false
         turns.removeFirstOrNull()?.let { dir = it }
         val next = snake.first() + dir
         val eats = next == food

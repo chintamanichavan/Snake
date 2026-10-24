@@ -119,4 +119,30 @@ class GameTest {
         assertTrue(Game.tickMillis(10) < Game.tickMillis(5))
         assertEquals(70L, Game.tickMillis(1000))
     }
+
+    @Test fun beforeTheFirstStepAnyDirectionWorks() {
+        val g = game()
+        g.aim(Dir.LEFT) // would be a reversal once moving
+        assertEquals(Dir.LEFT, g.dir)
+        assertEquals(Cell(2, 5), g.snake.first()) // turned end to end
+        g.step()
+        assertFalse(g.over)
+        assertEquals(Cell(1, 5), g.snake.first())
+    }
+
+    @Test fun onceMovingAimIsAnOrdinaryTurn() {
+        val g = game()
+        g.step()
+        g.aim(Dir.LEFT)
+        g.step()
+        assertEquals(Dir.RIGHT, g.dir)
+    }
+
+    @Test fun resetMakesTheSnakeFreshAgain() {
+        val g = game()
+        g.step()
+        assertFalse(g.fresh)
+        g.reset()
+        assertTrue(g.fresh)
+    }
 }

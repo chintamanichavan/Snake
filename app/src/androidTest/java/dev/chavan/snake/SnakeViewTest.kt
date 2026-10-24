@@ -175,4 +175,23 @@ class SnakeViewTest {
         onUi { view.draw(Canvas(bmp)) }
         assertEquals(SnakeView.FOOD, foodEdge()) // fully grown
     }
+
+    @Test fun everySwipeDirectionStartsTheGame() {
+        for (d in Dir.values()) {
+            onUi { view.game!!.reset() }
+            rule.scenario.recreate()
+            rule.scenario.onActivity { view = it.view; view.autoTick = false; view.feedback = recorder }
+            swipe(d.dx * 200f, d.dy * 200f)
+            assertEquals(SnakeView.State.RUNNING, view.state)
+            onUi { view.tick() }
+            assertEquals("swipe $d", d, view.game!!.dir)
+        }
+    }
+
+    @Test fun boardMiddleIsShieldedFromTheBackGesture() {
+        val r = view.systemGestureExclusionRects
+        assertEquals(1, r.size)
+        assertEquals(0, r[0].left)
+        assertEquals(view.width, r[0].right)
+    }
 }
