@@ -235,6 +235,7 @@ class SnakeView(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = e.x; downY = e.y; swiped = false
+                downAt = e.eventTime
             }
             // One turn per swipe, made as soon as the swipe is clear. Letting a long drag turn again
             // made sloppy diagonal swipes turn twice.
@@ -242,6 +243,7 @@ class SnakeView(context: Context) : View(context) {
                 val d = steerDir(e.x - downX, e.y - downY, heading(), swipeDistance)
                 if (d != null) {
                     swiped = true
+                    logInput(e, "turn $d mid-swipe")
                     steer(d)
                 }
             }
@@ -251,14 +253,36 @@ class SnakeView(context: Context) : View(context) {
                 val dx = e.x - downX
                 val dy = e.y - downY
                 if (swipeDir(dx, dy, touchSlop) == null) {
+                    logInput(e, "tap")
                     press()
                     performClick()
                 } else {
-                    steerDir(dx, dy, heading(), touchSlop)?.let { steer(it) }
+                    val d = steerDir(dx, dy, heading(), touchSlop)
+                    logInput(e, if (d == null) "ignored: not across heading ${heading()}" else "turn $d on lift")
+                    d?.let { steer(it) }
                 }
+            } else {
+                logInput(e, "lift after turn")
             }
         }
         return true
+    }
+
+    private var downAt = 0L
+
+    /**
+     * One line per input decision under the tag SnakeInput, so a swipe that feels wrong can be
+     * traced from `adb logcat -s SnakeInput`: where it came from, how far it moved, what it did.
+     */
+    private fun logInput(e: MotionEvent, what: String) {
+        val dpx = (e.x - downX) / density
+        val dpy = (e.y - downY) / density
+        android.util.Log.d(
+            "SnakeInput",
+            "%s dx=%.0fdp dy=%.0fdp %dms src=0x%x class=%d state=%s heading=%s".format(
+                what, dpx, dpy, e.eventTime - downAt, e.source, e.classification, state, game?.heading,
+            ),
+        )
     }
 
     /** Two-finger trackpad swipes and mouse wheels arrive as scrolling, not touches. */
@@ -267,7 +291,10 @@ class SnakeView(context: Context) : View(context) {
     override fun onGenericMotionEvent(e: MotionEvent): Boolean {
         if (e.isFromSource(InputDevice.SOURCE_CLASS_POINTER) && e.actionMasked == MotionEvent.ACTION_SCROLL) {
             val d = scroll.read(e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL), e.eventTime)
-            if (d != null) steer(d)
+            if (d != null) {
+                android.util.Log.d("SnakeInput", "scroll turn $d state=$state")
+                steer(d)
+            }
             return true
         }
         return super.onGenericMotionEvent(e)
