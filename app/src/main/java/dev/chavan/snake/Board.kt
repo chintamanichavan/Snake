@@ -44,6 +44,18 @@ class ScrollReader(private val threshold: Float = 1f, private val gapMs: Long = 
     }
 }
 
+/**
+ * Reads a finger movement as a turn for a snake heading the given way. Only the part of the
+ * movement across the heading counts, since those are the only turns possible: moving up, a swipe
+ * that is mostly "down" but a little right means right. Before the snake moves (heading null)
+ * every direction is allowed, so the larger part wins.
+ */
+fun steerDir(dx: Float, dy: Float, heading: Dir?, minDistance: Float): Dir? = when {
+    heading == null -> swipeDir(dx, dy, minDistance)
+    heading.dx != 0 -> if (abs(dy) < minDistance) null else if (dy > 0) Dir.DOWN else Dir.UP
+    else -> if (abs(dx) < minDistance) null else if (dx > 0) Dir.RIGHT else Dir.LEFT
+}
+
 /** Reads a finger movement as a direction once it has travelled minDistance along its main axis. */
 fun swipeDir(dx: Float, dy: Float, minDistance: Float): Dir? {
     if (abs(dx) < minDistance && abs(dy) < minDistance) return null

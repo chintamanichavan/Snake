@@ -62,4 +62,31 @@ class BoardTest {
         assertEquals(Dir.LEFT, ScrollReader().read(2f, 0f, 0))
         assertEquals(Dir.RIGHT, ScrollReader().read(-2f, 0f, 0))
     }
+
+    // Moving one way, the snake can only turn the two ways across it, so only that part of a
+    // swipe matters. A sloppy diagonal still turns the way it was meant.
+    @Test fun whileMovingOnlyTheSidewaysPartOfASwipeCounts() {
+        assertEquals(Dir.RIGHT, steerDir(30f, 80f, Dir.UP, 14f)) // mostly "down", but down is not a turn
+        assertEquals(Dir.LEFT, steerDir(-20f, -90f, Dir.DOWN, 14f))
+        assertEquals(Dir.UP, steerDir(70f, -20f, Dir.RIGHT, 14f))
+        assertNull(steerDir(10f, 200f, Dir.UP, 14f)) // nothing sideways: no turn
+    }
+
+    @Test fun beforeMovingAnyDirectionCounts() {
+        assertEquals(Dir.DOWN, steerDir(30f, 80f, null, 14f))
+        assertEquals(Dir.LEFT, steerDir(-80f, 30f, null, 14f))
+    }
+
+    @Test fun recordedEmulatorTrackpadSwipesTurnTheWayTheyWereMeant() {
+        // Real two-finger swipes captured with getevent on the emulator, converted to pixels on a
+        // 1080x2424 screen. The emulator stretches vertical movement, so sideways swipes arrive
+        // looking diagonal. Each was meant as a sideways turn while the snake moved vertically.
+        val dp = 2.625f
+        val sideways = listOf(355f to 648f, 330f to 607f, -784f to 167f, 428f to 61f)
+        for ((dx, dy) in sideways) {
+            val want = if (dx > 0) Dir.RIGHT else Dir.LEFT
+            assertEquals("swipe $dx,$dy moving down", want, steerDir(dx, dy, Dir.DOWN, 14f * dp))
+            assertEquals("swipe $dx,$dy moving up", want, steerDir(dx, dy, Dir.UP, 14f * dp))
+        }
+    }
 }

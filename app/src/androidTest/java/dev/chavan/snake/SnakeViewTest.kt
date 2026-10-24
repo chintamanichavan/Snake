@@ -329,4 +329,19 @@ class SnakeViewTest {
         assertEquals(Dir.RIGHT, view.game!!.dir)
         touch(MotionEvent.ACTION_UP, x + light, y)
     }
+
+    @Test fun aSloppyDiagonalSwipeTurnsTheWayItWasMeantAndOnlyOnce() {
+        swipe(0f, -200f) // heading up
+        onUi { view.tick() }
+        val x = view.width / 2f
+        val y = view.height / 2f
+        // Like a recorded emulator trackpad swipe: mostly down, partly right, in several moves.
+        touch(MotionEvent.ACTION_DOWN, x, y)
+        for (i in 1..6) touch(MotionEvent.ACTION_MOVE, x + 60f * i, y + 110f * i)
+        touch(MotionEvent.ACTION_UP, x + 360f, y + 660f)
+        onUi { view.tick() }
+        assertEquals(Dir.RIGHT, view.game!!.dir)
+        onUi { view.tick() }
+        assertEquals(Dir.RIGHT, view.game!!.dir) // no second turn from the rest of the drag
+    }
 }

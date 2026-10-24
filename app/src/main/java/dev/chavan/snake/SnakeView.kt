@@ -236,24 +236,25 @@ class SnakeView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 downX = e.x; downY = e.y; swiped = false
             }
-            MotionEvent.ACTION_MOVE -> {
-                // Measure from where the last swipe registered, so one long drag can make several turns.
-                val d = swipeDir(e.x - downX, e.y - downY, swipeDistance)
+            // One turn per swipe, made as soon as the swipe is clear. Letting a long drag turn again
+            // made sloppy diagonal swipes turn twice.
+            MotionEvent.ACTION_MOVE -> if (!swiped) {
+                val d = steerDir(e.x - downX, e.y - downY, heading(), swipeDistance)
                 if (d != null) {
                     swiped = true
-                    downX = e.x; downY = e.y
                     steer(d)
                 }
             }
             // A drag too short to turn mid-way still turns when the finger lifts. Only a touch that
             // barely moved is a tap; otherwise a quick flick would pause the game.
             MotionEvent.ACTION_UP -> if (!swiped) {
-                val d = swipeDir(e.x - downX, e.y - downY, touchSlop)
-                if (d != null) {
-                    steer(d)
-                } else {
+                val dx = e.x - downX
+                val dy = e.y - downY
+                if (swipeDir(dx, dy, touchSlop) == null) {
                     press()
                     performClick()
+                } else {
+                    steerDir(dx, dy, heading(), touchSlop)?.let { steer(it) }
                 }
             }
         }
@@ -284,6 +285,9 @@ class SnakeView(context: Context) : View(context) {
         steer(d)
         return true
     }
+
+    /** The way turns are measured against, or null before the game starts when any way goes. */
+    private fun heading(): Dir? = if (state == State.READY) null else game?.heading
 
     /** A swipe, scroll or arrow key: start, resume or turn. Every input method comes through here. */
     fun steer(d: Dir) {

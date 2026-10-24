@@ -93,6 +93,9 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         return true
     }
 
+    /** The way the snake will be heading once queued turns are done; new turns are relative to this. */
+    val heading get() = turns.lastOrNull() ?: dir
+
     fun turn(d: Dir) {
         if (over || turns.size >= 2) return
         val last = turns.lastOrNull() ?: dir
