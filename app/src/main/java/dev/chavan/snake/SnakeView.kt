@@ -36,6 +36,13 @@ class SnakeView(context: Context) : View(context) {
     private var stepAt = 0L
     private var stepMillis = 1L
 
+    /** Sound and vibration. Tests swap in a recorder. */
+    var feedback: Feedback = PhoneFeedback(this)
+
+    val particles = Particles()
+    private var foodAt = 0L
+    private var frameAt = 0L
+
     /** Space kept clear of the status bar, gesture bar and camera cutout. */
     var insetTop = 0
     var insetBottom = 0
@@ -53,6 +60,7 @@ class SnakeView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
     }
     private val food = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = FOOD }
+    private val spark = Paint(Paint.ANTI_ALIAS_FLAG)
     private val eye = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BACKGROUND }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = MUTED
@@ -110,6 +118,7 @@ class SnakeView(context: Context) : View(context) {
         if (game?.rows != l.rows) {
             game = Game(l.cols, l.rows)
             state = State.READY
+            foodAt = clock()
         }
         layout = l
         invalidate()
@@ -120,8 +129,15 @@ class SnakeView(context: Context) : View(context) {
         val g = game ?: return
         if (state != State.RUNNING) return
         stepMillis = Game.tickMillis(g.score)
-        g.step()
+        val eaten = g.food
+        val ate = g.step()
         stepAt = clock()
+        if (ate && eaten != null) {
+            particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 14, 3.2f, FOOD)
+            particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 6, 2f, HEAD, size = 0.09f)
+            foodAt = stepAt
+            feedback.eat(g.score)
+        }
         if (g.over) {
             state = State.OVER
             if (g.score > best) best = g.score
@@ -171,7 +187,13 @@ class SnakeView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_UP -> if (!swiped) {
                 when (state) {
-                    State.OVER -> { g.reset(); state = State.READY; invalidate() }
+                    State.OVER -> {
+                        g.reset()
+                        particles.clear()
+                        foodAt = clock()
+                        state = State.READY
+                        invalidate()
+                    }
                     State.PAUSED -> start()
                     State.RUNNING -> pause()
                     State.READY -> {}
@@ -206,13 +228,21 @@ class SnakeView(context: Context) : View(context) {
         }
         canvas.restore()
 
+        val now = clock()
+        val dt = ((now - frameAt).coerceIn(0L, 50L)) / 1000f
+        frameAt = now
+        particles.update(dt)
+
+        // New food pops in, then breathes gently so the eye finds it.
         g.food?.let {
-            canvas.drawCircle(l.left + (it.x + 0.5f) * c, l.top + (it.y + 0.5f) * c, c * 0.36f, food)
+            val pop = popScale(now - foodAt, FOOD_POP_MS)
+            val breathe = 1f + 0.05f * kotlin.math.sin(now / 260f)
+            canvas.drawCircle(px(l, it.x.toFloat()), py(l, it.y.toFloat()), c * 0.36f * pop * breathe, food)
         }
 
-        // Between steps the snake slides, so redraw every frame while it moves.
-        val t = if (state == State.RUNNING) progress(clock(), stepAt, stepMillis) else 1f
-        if (state == State.RUNNING) postInvalidateOnAnimation()
+        // Between steps the snake slides, so redraw every frame while it moves or anything is animating.
+        val t = if (state == State.RUNNING) progress(now, stepAt, stepMillis) else 1f
+        if (state == State.RUNNING || particles.alive || now - foodAt < FOOD_POP_MS) postInvalidateOnAnimation()
         val line = snakeLine(g.snake, g.leftTail, t)
 
         // One rounded tube, drawn tail first so the head sits on top. Each piece fades from a
@@ -230,6 +260,12 @@ class SnakeView(context: Context) : View(context) {
             canvas.drawPoint(px(l, line[0].x), py(l, line[0].y), body)
         }
         drawEyes(canvas, l, g, line[0])
+
+        for (p in particles.list) {
+            spark.color = p.color
+            spark.alpha = (255 * p.fade).toInt()
+            canvas.drawCircle(px(l, p.x), py(l, p.y), c * p.size * (0.4f + 0.6f * p.fade), spark)
+        }
 
         when (state) {
             State.READY -> overlay(canvas, l, "Snake", "Swipe to start")
@@ -285,6 +321,7 @@ class SnakeView(context: Context) : View(context) {
 
     companion object {
         const val COLS = 16
+        const val FOOD_POP_MS = 280L
 
         val BACKGROUND = Color.rgb(12, 17, 15)
         val BOARD = Color.rgb(22, 31, 27)

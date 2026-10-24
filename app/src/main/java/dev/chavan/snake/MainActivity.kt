@@ -27,6 +27,11 @@ class MainActivity : Activity() {
         setContentView(view)
     }
 
+    override fun onDestroy() {
+        view.feedback.release()
+        super.onDestroy()
+    }
+
     override fun onPause() {
         view.pause()
         super.onPause()

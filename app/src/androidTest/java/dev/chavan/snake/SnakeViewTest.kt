@@ -21,12 +21,21 @@ class SnakeViewTest {
 
     private lateinit var view: SnakeView
 
+    /** Records sound and vibration events instead of making them. */
+    private class Recorder : Feedback {
+        val events = ArrayList<String>()
+        override fun eat(score: Int) { events.add("eat $score") }
+        override fun crash() { events.add("crash") }
+    }
+    private val recorder = Recorder()
+
     @Before fun setUp() {
         InstrumentationRegistry.getInstrumentation().targetContext
             .getSharedPreferences("snake", 0).edit().clear().commit()
         rule.scenario.onActivity {
             view = it.view
             view.autoTick = false
+            view.feedback = recorder
         }
     }
 
@@ -93,6 +102,8 @@ class SnakeViewTest {
     }
 
     @Test fun drawsSnakeHeadAndFoodWhereTheGameSaysTheyAre() {
+        val later = SystemClock.uptimeMillis() + 60_000 // long after every animation has settled
+        onUi { view.clock = { later } }
         swipe(200f, 0f) // start, so no overlay dims the board
         val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
         onUi { view.draw(Canvas(bmp)) }
@@ -124,5 +135,32 @@ class SnakeViewTest {
         now += Game.tickMillis(0) // the step has finished
         onUi { view.draw(Canvas(bmp)) }
         assertEquals(SnakeView.HEAD, at(0.5f))
+    }
+
+    @Test fun eatingPlaysFeedbackAndSpraysSparks() {
+        swipe(200f, 0f)
+        val g = view.game!!
+        g.food = g.snake.first() + Dir.RIGHT
+        onUi { view.tick() }
+        assertEquals(listOf("eat 1"), recorder.events)
+        assertTrue(view.particles.alive)
+    }
+
+    @Test fun newFoodPopsIn() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        val g = view.game!!
+        g.food = g.snake.first() + Dir.RIGHT
+        onUi { view.tick() } // eats; new food appears now
+        val f = g.food!!
+        val l = view.layout!!
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        fun foodEdge() = bmp.getPixel(l.left + f.x * l.cell + l.cell / 2 + (l.cell * 0.3f).toInt(), l.top + f.y * l.cell + l.cell / 2)
+        onUi { view.draw(Canvas(bmp)) }
+        assertTrue(foodEdge() != SnakeView.FOOD) // just appeared: still tiny
+        now += 2_000
+        onUi { view.draw(Canvas(bmp)) }
+        assertEquals(SnakeView.FOOD, foodEdge()) // fully grown
     }
 }
