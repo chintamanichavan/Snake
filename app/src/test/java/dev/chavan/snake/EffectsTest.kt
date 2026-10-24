@@ -75,4 +75,11 @@ class EffectsTest {
         assertTrue(p.list.sumOf { it.vx.toDouble() } < 0)
         assertTrue(p.list[0].vx < p.list[3].vx)
     }
+
+    @Test fun bumpSwellsThenReturnsToNormal() {
+        assertEquals(1f, bumpScale(0), 1e-6f)
+        assertEquals(1.3f, bumpScale(110), 1e-3f)
+        assertEquals(1f, bumpScale(220), 0f)
+        assertEquals(1f, bumpScale(-50), 0f)
+    }
 }

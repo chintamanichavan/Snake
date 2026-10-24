@@ -10,6 +10,7 @@ import android.view.View
 interface Feedback {
     fun eat(score: Int)
     fun crash()
+    fun newBest()
     fun release() {}
 }
 
@@ -33,6 +34,13 @@ class PhoneFeedback(private val view: View) : Feedback {
     override fun crash() {
         crash?.let { play(it) }
         view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+    }
+
+    /** A rising four-note fanfare, after the crash thud has died down. */
+    override fun newBest() {
+        listOf(1, 3, 5, 8).forEachIndexed { i, step ->
+            view.postDelayed({ eat(step) }, 380L + i * 110L)
+        }
     }
 
     override fun release() {

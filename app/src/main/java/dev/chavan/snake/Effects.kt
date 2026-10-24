@@ -76,6 +76,12 @@ fun shakeOffset(ageMs: Long, amplitude: Float): Pos {
 
 const val SHAKE_MS = 450L
 
+/** A quick swell and settle for a number that just changed: 1 -> 1.3 -> 1 over durationMs. */
+fun bumpScale(ageMs: Long, durationMs: Long = 220L): Float {
+    if (ageMs < 0 || ageMs >= durationMs) return 1f
+    return 1f + 0.3f * sin(PI.toFloat() * ageMs / durationMs)
+}
+
 /** Grows from 0 to 1 over durationMs, overshooting a little before settling, like something popping in. */
 fun popScale(ageMs: Long, durationMs: Long): Float {
     val t = (ageMs.toFloat() / durationMs).coerceIn(0f, 1f)

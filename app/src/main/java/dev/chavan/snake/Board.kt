@@ -20,6 +20,30 @@ fun layoutBoard(areaLeft: Int, areaTop: Int, areaWidth: Int, areaHeight: Int, co
     return BoardLayout(cols, rows, cell, left, top)
 }
 
+/**
+ * Turns trackpad and mouse-wheel scrolling into swipes. Scroll arrives in many small pieces, so it
+ * is added up until it is big enough to count; a pause of gapMs starts a fresh gesture.
+ * Android reports scroll as the way the content should move, the opposite of the fingers for a
+ * horizontal swipe, so h is flipped to give the direction the fingers went (with natural scrolling).
+ */
+class ScrollReader(private val threshold: Float = 1f, private val gapMs: Long = 250L) {
+    private var h = 0f
+    private var v = 0f
+    private var lastAt = Long.MIN_VALUE
+    private var fired = false
+
+    fun read(hScroll: Float, vScroll: Float, at: Long): Dir? {
+        if (lastAt == Long.MIN_VALUE || at - lastAt > gapMs) { h = 0f; v = 0f; fired = false }
+        lastAt = at
+        if (fired) return null // one turn per gesture, however long it runs on
+        h -= hScroll
+        v += vScroll
+        val d = swipeDir(h, v, threshold) ?: return null
+        fired = true
+        return d
+    }
+}
+
 /** Reads a finger movement as a direction once it has travelled minDistance along its main axis. */
 fun swipeDir(dx: Float, dy: Float, minDistance: Float): Dir? {
     if (abs(dx) < minDistance && abs(dy) < minDistance) return null

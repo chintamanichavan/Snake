@@ -8,6 +8,7 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -26,6 +27,7 @@ class SnakeViewTest {
         val events = ArrayList<String>()
         override fun eat(score: Int) { events.add("eat $score") }
         override fun crash() { events.add("crash") }
+        override fun newBest() { events.add("newBest") }
     }
     private val recorder = Recorder()
 
@@ -96,7 +98,8 @@ class SnakeViewTest {
         view.game!!.food = Cell(0, 0) // off the snake's row, so it cannot eat again by chance
         onUi { repeat(SnakeView.COLS) { view.tick() } } // run into the right wall
         assertEquals(SnakeView.State.OVER, view.state)
-        assertEquals(listOf("eat 1", "crash"), recorder.events)
+        assertEquals(listOf("eat 1", "crash", "newBest"), recorder.events)
+        assertTrue(view.newBest)
         assertEquals(view.game!!.snake.size, view.particles.list.count { it.size == 0.38f }) // one piece per segment, besides the sparks
         assertEquals(1, view.best)
         val saved = InstrumentationRegistry.getInstrumentation().targetContext
@@ -193,5 +196,80 @@ class SnakeViewTest {
         assertEquals(1, r.size)
         assertEquals(0, r[0].left)
         assertEquals(view.width, r[0].right)
+    }
+
+    @Test fun aGameThatDoesNotBeatTheBestIsNotCelebrated() {
+        onUi { view.best = 5 }
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0)
+        onUi { repeat(SnakeView.COLS) { view.tick() } }
+        assertEquals(SnakeView.State.OVER, view.state)
+        assertEquals(listOf("crash"), recorder.events)
+        assertFalse(view.newBest)
+        assertEquals(5, view.best)
+    }
+
+    @Test fun scoreFlashesWhenItGoesUp() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        view.game!!.food = view.game!!.snake.first() + Dir.RIGHT
+        onUi { view.tick() }
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        val top = view.insetTop
+        val hud = view.layout!!.top - top
+        fun hudHasHeadColour(): Boolean {
+            for (y in top until top + hud step 2) for (x in 0 until view.width / 3 step 2) {
+                val p = bmp.getPixel(x, y)
+                if (android.graphics.Color.green(p) > 180 && android.graphics.Color.red(p) < 160) return true
+            }
+            return false
+        }
+        now += 110 // middle of the swell
+        onUi { view.draw(Canvas(bmp)) }
+        assertTrue(hudHasHeadColour())
+        now += 1_000 // settled back to plain text
+        onUi { view.draw(Canvas(bmp)) }
+        assertFalse(hudHasHeadColour())
+    }
+
+    private fun key(code: Int) {
+        val t = SystemClock.uptimeMillis()
+        onUi {
+            view.dispatchKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, code, 0))
+            view.dispatchKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, code, 0))
+        }
+    }
+
+    @Test fun arrowKeysSteerAndSpacePauses() {
+        assertTrue(view.hasFocus())
+        key(android.view.KeyEvent.KEYCODE_DPAD_LEFT) // starts the game heading left
+        assertEquals(SnakeView.State.RUNNING, view.state)
+        assertEquals(Dir.LEFT, view.game!!.dir)
+        key(android.view.KeyEvent.KEYCODE_DPAD_UP)
+        onUi { view.tick() }
+        assertEquals(Dir.UP, view.game!!.dir)
+        key(android.view.KeyEvent.KEYCODE_SPACE)
+        assertEquals(SnakeView.State.PAUSED, view.state)
+    }
+
+    @Test fun trackpadScrollSteers() {
+        val props = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE })
+        fun scrollBy(h: Float, v: Float) {
+            val c = MotionEvent.PointerCoords().apply {
+                x = view.width / 2f; y = view.height / 2f
+                setAxisValue(MotionEvent.AXIS_HSCROLL, h)
+                setAxisValue(MotionEvent.AXIS_VSCROLL, v)
+            }
+            val t = SystemClock.uptimeMillis()
+            val e = MotionEvent.obtain(t, t, MotionEvent.ACTION_SCROLL, 1, props, arrayOf(c), 0, 0, 1f, 1f, 0, 0,
+                android.view.InputDevice.SOURCE_MOUSE, 0)
+            onUi { view.dispatchGenericMotionEvent(e) }
+            e.recycle()
+        }
+        scrollBy(0f, 2f)
+        assertEquals(SnakeView.State.RUNNING, view.state)
+        onUi { view.tick() }
+        assertEquals(Dir.DOWN, view.game!!.dir)
     }
 }

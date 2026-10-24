@@ -37,4 +37,29 @@ class BoardTest {
         assertEquals(Dir.DOWN, swipeDir(5f, 45f, 40f))
         assertEquals(Dir.UP, swipeDir(-30f, -80f, 40f))
     }
+
+    @Test fun smallScrollsAddUpToOneTurn() {
+        val r = ScrollReader(threshold = 1f)
+        assertNull(r.read(0f, 0.4f, 0))
+        assertNull(r.read(0f, 0.4f, 10))
+        assertEquals(Dir.DOWN, r.read(0f, 0.4f, 20))
+    }
+
+    @Test fun oneLongScrollGestureTurnsOnlyOnce() {
+        val r = ScrollReader(threshold = 1f)
+        assertEquals(Dir.DOWN, r.read(0f, 2f, 0))
+        assertNull(r.read(0f, 2f, 30))
+        assertNull(r.read(-5f, 0f, 60)) // still the same gesture
+    }
+
+    @Test fun aPauseStartsANewGesture() {
+        val r = ScrollReader(threshold = 1f, gapMs = 250)
+        assertEquals(Dir.DOWN, r.read(0f, 2f, 0))
+        assertEquals(Dir.RIGHT, r.read(-2f, 0f, 400))
+    }
+
+    @Test fun horizontalScrollIsFlippedToMatchTheFingers() {
+        assertEquals(Dir.LEFT, ScrollReader().read(2f, 0f, 0))
+        assertEquals(Dir.RIGHT, ScrollReader().read(-2f, 0f, 0))
+    }
 }

@@ -8,6 +8,8 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 
@@ -42,6 +44,12 @@ class SnakeView(context: Context) : View(context) {
     val particles = Particles()
     private var foodAt = 0L
     private var crashAt = 0L
+    private var scoreAt = -10_000L
+
+    /** True when the game that just ended beat the previous best. */
+    var newBest = false
+        private set
+    private var confettiDone = false
     private var frameAt = 0L
 
     /** Space kept clear of the status bar, gesture bar and camera cutout. */
@@ -104,6 +112,16 @@ class SnakeView(context: Context) : View(context) {
     init {
         setBackgroundColor(BACKGROUND)
         contentDescription = "Snake game board"
+        // Take keyboard focus so arrow keys work on the emulator, Chromebooks and tablets with keyboards.
+        isFocusable = true
+        isFocusableInTouchMode = true
+        // Android would otherwise grey over the whole board to show it has focus.
+        defaultFocusHighlightEnabled = false
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestFocus()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = relayout()
@@ -142,6 +160,7 @@ class SnakeView(context: Context) : View(context) {
             particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 14, 3.2f, FOOD)
             particles.burst(eaten.x.toFloat(), eaten.y.toFloat(), 6, 2f, HEAD, size = 0.09f)
             foodAt = stepAt
+            scoreAt = stepAt
             feedback.eat(g.score)
         }
         if (g.over) {
@@ -160,7 +179,12 @@ class SnakeView(context: Context) : View(context) {
                 particles.burst(ix, iy, 16, 6f, TEXT, size = 0.07f, lifetime = 0.35f)
                 feedback.crash()
             }
-            if (g.score > best) best = g.score
+            newBest = g.score > best
+            confettiDone = false
+            if (newBest) {
+                best = g.score
+                feedback.newBest()
+            }
             onGameOver(g.score)
         }
         invalidate()
@@ -198,32 +222,70 @@ class SnakeView(context: Context) : View(context) {
                 if (d != null) {
                     swiped = true
                     downX = e.x; downY = e.y
-                    when (state) {
-                        State.READY -> { g.aim(d); start() }
-                        State.PAUSED -> { g.turn(d); start() }
-                        State.RUNNING -> g.turn(d)
-                        State.OVER -> {}
-                    }
+                    steer(d)
                 }
             }
             MotionEvent.ACTION_UP -> if (!swiped) {
-                when (state) {
-                    // Ignore taps until the card shows, so a panicked swipe can't skip past it.
-                    State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) {
-                        g.reset()
-                        particles.clear()
-                        foodAt = clock()
-                        state = State.READY
-                        invalidate()
-                    }
-                    State.PAUSED -> start()
-                    State.RUNNING -> pause()
-                    State.READY -> {}
-                }
+                press()
                 performClick()
             }
         }
         return true
+    }
+
+    /** Two-finger trackpad swipes and mouse wheels arrive as scrolling, not touches. */
+    private val scroll = ScrollReader()
+
+    override fun onGenericMotionEvent(e: MotionEvent): Boolean {
+        if (e.isFromSource(InputDevice.SOURCE_CLASS_POINTER) && e.actionMasked == MotionEvent.ACTION_SCROLL) {
+            val d = scroll.read(e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL), e.eventTime)
+            if (d != null) steer(d)
+            return true
+        }
+        return super.onGenericMotionEvent(e)
+    }
+
+    override fun onKeyDown(keyCode: Int, e: KeyEvent): Boolean {
+        val d = when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W -> Dir.UP
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> Dir.DOWN
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> Dir.LEFT
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> Dir.RIGHT
+            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> { press(); return true }
+            else -> return super.onKeyDown(keyCode, e)
+        }
+        steer(d)
+        return true
+    }
+
+    /** A swipe, scroll or arrow key: start, resume or turn. Every input method comes through here. */
+    fun steer(d: Dir) {
+        val g = game ?: return
+        when (state) {
+            State.READY -> { g.aim(d); start() }
+            State.PAUSED -> { g.turn(d); start() }
+            State.RUNNING -> g.turn(d)
+            State.OVER -> {}
+        }
+    }
+
+    /** A tap or the space bar: pause, resume, or play again once the game-over card is up. */
+    fun press() {
+        val g = game ?: return
+        when (state) {
+            // Ignore presses until the card shows, so a panicked swipe can't skip past it.
+            State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) {
+                g.reset()
+                particles.clear()
+                newBest = false
+                foodAt = clock()
+                state = State.READY
+                invalidate()
+            }
+            State.PAUSED -> start()
+            State.RUNNING -> pause()
+            State.READY -> {}
+        }
     }
 
     override fun performClick(): Boolean {
@@ -282,10 +344,22 @@ class SnakeView(context: Context) : View(context) {
         canvas.restore()
 
         val shown = if (state == State.OVER) ((now - crashAt - OVERLAY_DELAY_MS) / OVERLAY_FADE_MS.toFloat()).coerceIn(0f, 1f) else 1f
+        if (state == State.OVER && newBest && shown > 0f && !confettiDone) {
+            confettiDone = true
+            celebrate(l)
+            postInvalidateOnAnimation()
+        }
         when (state) {
             State.READY -> overlay(canvas, l, "Snake", "Swipe to start", 1f)
             State.PAUSED -> overlay(canvas, l, "Paused", "Tap or swipe to continue", 1f)
-            State.OVER -> if (shown > 0f) overlay(canvas, l, if (g.won) "You filled the board" else "Game over", "Score ${g.score}  ·  Tap to play again", shown)
+            State.OVER -> if (shown > 0f) {
+                val heading = when {
+                    g.won -> "You filled the board"
+                    newBest -> "New best!"
+                    else -> "Game over"
+                }
+                overlay(canvas, l, heading, "Score ${g.score}  ·  Tap to play again", shown)
+            }
             State.RUNNING -> {}
         }
     }
@@ -313,17 +387,44 @@ class SnakeView(context: Context) : View(context) {
     /** Segment i of n, bright at the head and deeper towards the tail. */
     private fun segmentColor(i: Int, n: Int) = blend(HEAD, TAIL, if (n > 1) i / (n - 1f) else 0f)
 
+    /** Confetti in the game's colours, falling from across the top of the board. */
+    private fun celebrate(l: BoardLayout) {
+        val colors = intArrayOf(HEAD, FOOD, TEXT, TAIL)
+        for (i in 0 until 7) {
+            val x = (i + 0.5f) * l.cols / 7f - 0.5f
+            particles.burst(x, l.rows * 0.25f, 9, 4f, colors[i % colors.size], size = 0.11f, lifetime = 1.1f)
+        }
+    }
+
     private fun drawHud(canvas: Canvas, g: Game) {
+        val now = clock()
         val baseline = insetTop + hudHeight - dp(18f)
         val left = margin + dp(4f)
         canvas.drawText("SCORE", left, baseline - dp(32f), label)
+        // The score swells briefly and flashes the snake's colour each time it goes up.
+        val bump = bumpScale(now - scoreAt)
+        canvas.save()
+        canvas.scale(bump, bump, left, baseline)
+        number.color = blend(TEXT, HEAD, (bump - 1f) / 0.3f)
         canvas.drawText(g.score.toString(), left, baseline, number)
+        canvas.restore()
+        number.color = TEXT
+
+        // Once this game passes the old best, BEST becomes NEW BEST and follows the score.
+        val beating = g.score > best || newBest
         val bestText = maxOf(best, g.score).toString()
         val right = width - margin - dp(4f)
         label.textAlign = Paint.Align.RIGHT
         number.textAlign = Paint.Align.RIGHT
-        canvas.drawText("BEST", right, baseline - dp(32f), label)
+        if (beating) label.color = HEAD
+        canvas.drawText(if (beating) "NEW BEST" else "BEST", right, baseline - dp(32f), label)
+        canvas.save()
+        if (g.score > best) canvas.scale(bump, bump, right, baseline)
+        if (beating) number.color = HEAD
         canvas.drawText(bestText, right, baseline, number)
+        canvas.restore()
+        label.color = MUTED
+        number.color = TEXT
         label.textAlign = Paint.Align.LEFT
         number.textAlign = Paint.Align.LEFT
     }
