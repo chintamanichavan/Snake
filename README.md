@@ -19,3 +19,16 @@ Uses Android Studio's bundled JDK:
 
 Start the emulator with `~/Library/Android/sdk/emulator/emulator -avd Snake_Pixel`,
 or open this folder in Android Studio and press Run.
+
+## Playing on the emulator
+
+Swipe with two fingers on the trackpad, click and drag, or use the arrow keys (space pauses).
+
+An emulator made from the terminal with `avdmanager` has no keyboard and drops sideways
+trackpad swipes. Turn both on in `~/.android/avd/Snake_Pixel.avd/config.ini`, then restart it:
+
+    hw.keyboard=yes
+    hw.touchpad0=yes
+
+Checked with `adb shell getevent -lt`: before these settings, left and right two-finger swipes
+sent no input at all and arrow keys never arrived.
