@@ -109,7 +109,9 @@ class SnakeView(context: Context) : View(context) {
     private var downX = 0f
     private var downY = 0f
     private var swiped = false
-    private val swipeDistance = dp(24f)
+    // How far a finger must travel mid-drag to turn. Low enough that a light flick counts, but
+    // still well above the touch slop so a resting finger never turns by accident.
+    private val swipeDistance = dp(14f)
     // Android's own "this finger moved on purpose" distance; anything less is a tap.
     private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 

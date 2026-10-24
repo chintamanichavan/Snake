@@ -276,7 +276,7 @@ class SnakeViewTest {
     @Test fun aShortQuickSwipeTurnsInsteadOfPausing() {
         swipe(0f, -200f) // start heading up
         onUi { view.tick() }
-        val short = 12f * view.resources.displayMetrics.density // well under the 24dp mid-drag threshold
+        val short = 10f * view.resources.displayMetrics.density // well under the mid-drag threshold
         swipe(short, 0f)
         assertEquals(SnakeView.State.RUNNING, view.state)
         onUi { view.tick() }
@@ -315,5 +315,18 @@ class SnakeViewTest {
         assertEquals(head, view.game!!.snake.first())
         onUi { view.tick() }
         assertEquals(Dir.UP, view.game!!.dir)
+    }
+
+    @Test fun aLightDragTurnsBeforeTheFingerLifts() {
+        swipe(0f, -200f) // start heading up
+        onUi { view.tick() }
+        val light = 16f * view.resources.displayMetrics.density
+        val x = view.width / 2f
+        val y = view.height / 2f
+        touch(MotionEvent.ACTION_DOWN, x, y)
+        touch(MotionEvent.ACTION_MOVE, x + light, y) // finger still down
+        onUi { view.tick() }
+        assertEquals(Dir.RIGHT, view.game!!.dir)
+        touch(MotionEvent.ACTION_UP, x + light, y)
     }
 }
