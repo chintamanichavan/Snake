@@ -272,4 +272,20 @@ class SnakeViewTest {
         onUi { view.tick() }
         assertEquals(Dir.DOWN, view.game!!.dir)
     }
+
+    @Test fun aShortQuickSwipeTurnsInsteadOfPausing() {
+        swipe(0f, -200f) // start heading up
+        onUi { view.tick() }
+        val short = 12f * view.resources.displayMetrics.density // well under the 24dp mid-drag threshold
+        swipe(short, 0f)
+        assertEquals(SnakeView.State.RUNNING, view.state)
+        onUi { view.tick() }
+        assertEquals(Dir.RIGHT, view.game!!.dir)
+    }
+
+    @Test fun aStillTouchIsStillATap() {
+        swipe(0f, -200f)
+        swipe(2f, 1f) // a finger never lands perfectly still
+        assertEquals(SnakeView.State.PAUSED, view.state)
+    }
 }

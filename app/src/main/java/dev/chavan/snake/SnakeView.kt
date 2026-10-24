@@ -101,6 +101,8 @@ class SnakeView(context: Context) : View(context) {
     private var downY = 0f
     private var swiped = false
     private val swipeDistance = dp(24f)
+    // Android's own "this finger moved on purpose" distance; anything less is a tap.
+    private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -225,9 +227,16 @@ class SnakeView(context: Context) : View(context) {
                     steer(d)
                 }
             }
+            // A drag too short to turn mid-way still turns when the finger lifts. Only a touch that
+            // barely moved is a tap; otherwise a quick flick would pause the game.
             MotionEvent.ACTION_UP -> if (!swiped) {
-                press()
-                performClick()
+                val d = swipeDir(e.x - downX, e.y - downY, touchSlop)
+                if (d != null) {
+                    steer(d)
+                } else {
+                    press()
+                    performClick()
+                }
             }
         }
         return true
