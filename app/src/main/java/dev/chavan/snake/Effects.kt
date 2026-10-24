@@ -33,6 +33,22 @@ class Particles(private val random: Random = Random.Default) {
 
     fun add(p: Particle) = list.add(p)
 
+    /**
+     * Breaks the snake into one piece per cell. Pieces fly away from the point of impact (ix, iy),
+     * the ones nearest it fastest, so the crash reads as a hit at the front. color(i) gives segment i's colour.
+     */
+    fun shatter(snake: List<Cell>, ix: Float, iy: Float, cellRadius: Float = 0.38f, lifetime: Float = 0.9f, color: (Int) -> Int) {
+        snake.forEachIndexed { i, c ->
+            var dx = c.x - ix
+            var dy = c.y - iy
+            val d = kotlin.math.sqrt(dx * dx + dy * dy)
+            if (d > 0f) { dx /= d; dy /= d }
+            val push = 10f / (1f + 0.2f * i)
+            val jitter = { (random.nextFloat() - 0.5f) * 3f }
+            list.add(Particle(c.x.toFloat(), c.y.toFloat(), dx * push + jitter(), dy * push + jitter(), color(i), cellRadius, lifetime))
+        }
+    }
+
     /** Moves every spark on by dt seconds, slowing it down, and drops the ones that have faded out. */
     fun update(dt: Float) {
         val drag = exp(-4f * dt)
@@ -50,6 +66,15 @@ class Particles(private val random: Random = Random.Default) {
 
     fun clear() = list.clear()
 }
+
+/** How far to nudge the board ageMs after a crash: a quick shake that dies out by SHAKE_MS. */
+fun shakeOffset(ageMs: Long, amplitude: Float): Pos {
+    if (ageMs < 0 || ageMs >= SHAKE_MS) return Pos(0f, 0f)
+    val a = amplitude * exp(-ageMs / 110f)
+    return Pos(a * sin(ageMs / 14f), a * cos(ageMs / 19f))
+}
+
+const val SHAKE_MS = 450L
 
 /** Grows from 0 to 1 over durationMs, overshooting a little before settling, like something popping in. */
 fun popScale(ageMs: Long, durationMs: Long): Float {

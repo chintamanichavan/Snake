@@ -88,17 +88,29 @@ class SnakeViewTest {
     }
 
     @Test fun crashingEndsGameSavesBestAndTapRestarts() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
         swipe(200f, 0f)
         view.game!!.food = Cell(view.game!!.snake.first().x + 1, view.game!!.snake.first().y)
-        onUi { repeat(SnakeView.COLS) { view.tick() } } // eat once, then run into the right wall
+        onUi { view.tick() } // eat once
+        view.game!!.food = Cell(0, 0) // off the snake's row, so it cannot eat again by chance
+        onUi { repeat(SnakeView.COLS) { view.tick() } } // run into the right wall
         assertEquals(SnakeView.State.OVER, view.state)
+        assertEquals(listOf("eat 1", "crash"), recorder.events)
+        assertEquals(view.game!!.snake.size, view.particles.list.count { it.size == 0.38f }) // one piece per segment, besides the sparks
         assertEquals(1, view.best)
         val saved = InstrumentationRegistry.getInstrumentation().targetContext
             .getSharedPreferences("snake", 0).getInt(MainActivity.BEST, 0)
         assertEquals(1, saved)
+
+        tap() // too soon: the game-over card is not up yet
+        assertEquals(SnakeView.State.OVER, view.state)
+
+        now += SnakeView.OVERLAY_DELAY_MS
         tap()
         assertEquals(SnakeView.State.READY, view.state)
         assertEquals(0, view.game!!.score)
+        assertTrue(view.particles.list.isEmpty())
     }
 
     @Test fun drawsSnakeHeadAndFoodWhereTheGameSaysTheyAre() {

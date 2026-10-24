@@ -41,6 +41,7 @@ class SnakeView(context: Context) : View(context) {
 
     val particles = Particles()
     private var foodAt = 0L
+    private var crashAt = 0L
     private var frameAt = 0L
 
     /** Space kept clear of the status bar, gesture bar and camera cutout. */
@@ -140,6 +141,20 @@ class SnakeView(context: Context) : View(context) {
         }
         if (g.over) {
             state = State.OVER
+            crashAt = stepAt
+            if (g.won) {
+                // A full board: confetti from every segment instead of a crash.
+                g.snake.forEachIndexed { i, c -> if (i % 3 == 0) particles.burst(c.x.toFloat(), c.y.toFloat(), 5, 3f, segmentColor(i, g.snake.size)) }
+                feedback.eat(g.score)
+            } else {
+                // The hit is half a cell ahead of the head, where the wall or body was.
+                val h = g.snake.first()
+                val ix = h.x + g.dir.dx * 0.5f
+                val iy = h.y + g.dir.dy * 0.5f
+                particles.shatter(g.snake, ix, iy) { segmentColor(it, g.snake.size) }
+                particles.burst(ix, iy, 16, 6f, TEXT, size = 0.07f, lifetime = 0.35f)
+                feedback.crash()
+            }
             if (g.score > best) best = g.score
             onGameOver(g.score)
         }
@@ -187,7 +202,8 @@ class SnakeView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_UP -> if (!swiped) {
                 when (state) {
-                    State.OVER -> {
+                    // Ignore taps until the card shows, so a panicked swipe can't skip past it.
+                    State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) {
                         g.reset()
                         particles.clear()
                         foodAt = clock()
@@ -212,7 +228,13 @@ class SnakeView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val g = game ?: return
         val l = layout ?: return
+        val now = clock()
         drawHud(canvas, g)
+
+        val crashed = state == State.OVER && !g.won
+        val shake = if (crashed) shakeOffset(now - crashAt, dp(9f)) else Pos(0f, 0f)
+        canvas.save()
+        canvas.translate(shake.x, shake.y)
 
         val c = l.cell.toFloat()
         rect.set(l.left.toFloat(), l.top.toFloat(), (l.left + l.width).toFloat(), (l.top + l.height).toFloat())
@@ -228,7 +250,6 @@ class SnakeView(context: Context) : View(context) {
         }
         canvas.restore()
 
-        val now = clock()
         val dt = ((now - frameAt).coerceIn(0L, 50L)) / 1000f
         frameAt = now
         particles.update(dt)
@@ -242,15 +263,36 @@ class SnakeView(context: Context) : View(context) {
 
         // Between steps the snake slides, so redraw every frame while it moves or anything is animating.
         val t = if (state == State.RUNNING) progress(now, stepAt, stepMillis) else 1f
-        if (state == State.RUNNING || particles.alive || now - foodAt < FOOD_POP_MS) postInvalidateOnAnimation()
+        val settling = state == State.OVER && now - crashAt < OVERLAY_DELAY_MS + OVERLAY_FADE_MS
+        if (state == State.RUNNING || particles.alive || now - foodAt < FOOD_POP_MS || settling) postInvalidateOnAnimation()
         val line = snakeLine(g.snake, g.leftTail, t)
+        if (!crashed) drawSnake(canvas, l, g, line)
+
+        for (p in particles.list) {
+            spark.color = p.color
+            spark.alpha = (255 * p.fade).toInt()
+            canvas.drawCircle(px(l, p.x), py(l, p.y), c * p.size * (0.4f + 0.6f * p.fade), spark)
+        }
+        canvas.restore()
+
+        val shown = if (state == State.OVER) ((now - crashAt - OVERLAY_DELAY_MS) / OVERLAY_FADE_MS.toFloat()).coerceIn(0f, 1f) else 1f
+        when (state) {
+            State.READY -> overlay(canvas, l, "Snake", "Swipe to start", 1f)
+            State.PAUSED -> overlay(canvas, l, "Paused", "Tap or swipe to continue", 1f)
+            State.OVER -> if (shown > 0f) overlay(canvas, l, if (g.won) "You filled the board" else "Game over", "Score ${g.score}  ·  Tap to play again", shown)
+            State.RUNNING -> {}
+        }
+    }
+
+    private fun drawSnake(canvas: Canvas, l: BoardLayout, g: Game, line: List<Pos>) {
+        val c = l.cell.toFloat()
 
         // One rounded tube, drawn tail first so the head sits on top. Each piece fades from a
         // bright head to a deeper tail so direction reads at a glance.
         body.strokeWidth = c * 0.76f
         val n = line.size
         for (i in n - 2 downTo 0) {
-            body.color = blend(HEAD, TAIL, if (n > 2) i / (n - 2f) else 0f)
+            body.color = segmentColor(i, n - 1)
             val a = line[i + 1]
             val b = line[i]
             canvas.drawLine(px(l, a.x), py(l, a.y), px(l, b.x), py(l, b.y), body)
@@ -260,20 +302,10 @@ class SnakeView(context: Context) : View(context) {
             canvas.drawPoint(px(l, line[0].x), py(l, line[0].y), body)
         }
         drawEyes(canvas, l, g, line[0])
-
-        for (p in particles.list) {
-            spark.color = p.color
-            spark.alpha = (255 * p.fade).toInt()
-            canvas.drawCircle(px(l, p.x), py(l, p.y), c * p.size * (0.4f + 0.6f * p.fade), spark)
-        }
-
-        when (state) {
-            State.READY -> overlay(canvas, l, "Snake", "Swipe to start")
-            State.PAUSED -> overlay(canvas, l, "Paused", "Tap or swipe to continue")
-            State.OVER -> overlay(canvas, l, if (g.won) "You filled the board" else "Game over", "Score ${g.score}  ·  Tap to play again")
-            State.RUNNING -> {}
-        }
     }
+
+    /** Segment i of n, bright at the head and deeper towards the tail. */
+    private fun segmentColor(i: Int, n: Int) = blend(HEAD, TAIL, if (n > 1) i / (n - 1f) else 0f)
 
     private fun drawHud(canvas: Canvas, g: Game) {
         val baseline = insetTop + hudHeight - dp(18f)
@@ -309,8 +341,11 @@ class SnakeView(context: Context) : View(context) {
         }
     }
 
-    private fun overlay(canvas: Canvas, l: BoardLayout, heading: String, sub: String) {
+    private fun overlay(canvas: Canvas, l: BoardLayout, heading: String, sub: String, opacity: Float) {
         rect.set(l.left.toFloat(), l.top.toFloat(), (l.left + l.width).toFloat(), (l.top + l.height).toFloat())
+        scrim.alpha = (170 * opacity).toInt()
+        title.alpha = (255 * opacity).toInt()
+        hint.alpha = (255 * opacity).toInt()
         canvas.drawRoundRect(rect, dp(10f), dp(10f), scrim)
         // Text sits in the upper third: the snake starts on the middle row and must stay visible.
         val cx = rect.centerX()
@@ -322,6 +357,8 @@ class SnakeView(context: Context) : View(context) {
     companion object {
         const val COLS = 16
         const val FOOD_POP_MS = 280L
+        const val OVERLAY_DELAY_MS = 650L
+        const val OVERLAY_FADE_MS = 250L
 
         val BACKGROUND = Color.rgb(12, 17, 15)
         val BOARD = Color.rgb(22, 31, 27)

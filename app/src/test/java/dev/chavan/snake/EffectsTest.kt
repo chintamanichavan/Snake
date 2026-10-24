@@ -50,4 +50,29 @@ class EffectsTest {
         assertEquals(1320f, eatPitch(8), 0.1f)
         assertEquals(eatPitch(1), eatPitch(9), 0.01f)
     }
+
+    @Test fun shakeStaysWithinAmplitudeAndStops() {
+        for (ms in 0L until SHAKE_MS) {
+            val o = shakeOffset(ms, 10f)
+            assertTrue(abs(o.x) <= 10f && abs(o.y) <= 10f)
+        }
+        assertEquals(Pos(0f, 0f), shakeOffset(SHAKE_MS, 10f))
+        assertEquals(Pos(0f, 0f), shakeOffset(-5, 10f))
+        // It dies down: late wobble is smaller than early wobble.
+        val early = (0L..60L).maxOf { abs(shakeOffset(it, 10f).x) }
+        val late = (350L..449L).maxOf { abs(shakeOffset(it, 10f).x) }
+        assertTrue(late < early / 3)
+    }
+
+    @Test fun shatterMakesOnePiecePerCellFlyingAwayFromTheHead() {
+        val p = Particles(Random(4))
+        val snake = listOf(Cell(5, 5), Cell(4, 5), Cell(3, 5), Cell(2, 5))
+        p.shatter(snake, 5.5f, 5f) { it * 10 } // hit a wall just right of the head
+        assertEquals(4, p.list.size)
+        assertEquals(listOf(0, 10, 20, 30), p.list.map { it.color })
+        assertEquals(snake.map { Pos(it.x.toFloat(), it.y.toFloat()) }, p.list.map { Pos(it.x, it.y) })
+        // Everything lies left of the impact, so on average the pieces go left, the head fastest.
+        assertTrue(p.list.sumOf { it.vx.toDouble() } < 0)
+        assertTrue(p.list[0].vx < p.list[3].vx)
+    }
 }
