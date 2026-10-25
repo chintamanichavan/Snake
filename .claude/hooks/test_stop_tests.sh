@@ -56,6 +56,31 @@ export CLAUDE_PROJECT_DIR=/tmp
 check "runs in its own project folder"           2 "$first" 'echo "P > $(pwd) FAILED"; false' "$(pwd) FAILED"
 unset CLAUDE_PROJECT_DIR
 
+# A hang is stopped by the hook's own watchdog, never counted as a pass, and leaves
+# nothing running. sleep 37 is a value nothing else on the machine is likely to use.
+start=$(date +%s)
+SNAKE_HOOK_LIMIT=1 check "hung tests time out, not a pass" 1 "$first" "sleep 37" "did not finish"
+[ $(( $(date +%s) - start )) -lt 10 ] && echo "ok   timeout fires on time" || { echo "FAIL timeout took too long"; fail=1; }
+pgrep -qx -f 'sleep 37' && { echo "FAIL hung command left running"; fail=1; } || echo "ok   hung command is killed"
+
+# The temp log is removed on every path.
+scratch=$(mktemp -d)
+TMPDIR="$scratch" check "temp log: pass path" 0 "$first" true
+TMPDIR="$scratch" check "temp log: block path" 2 "$first" "$red"
+SNAKE_HOOK_LIMIT=1 TMPDIR="$scratch" check "temp log: timeout path" 1 "$first" "sleep 37"
+[ -z "$(/bin/ls -A "$scratch")" ] && echo "ok   temp logs removed" || { echo "FAIL temp logs left: $(/bin/ls -A "$scratch")"; fail=1; }
+rm -rf "$scratch"
+
+# settings.json registers the hook the way Claude Code will run it: the exact command
+# string, through a shell, with a project path that contains a space.
+s=.claude/settings.json
+entry=$(jq -c '.hooks.Stop[0].hooks[0]' "$s" 2>/dev/null)
+[ "$(printf '%s' "$entry" | jq -r .type)" = command ] && echo "ok   settings: Stop command hook" || { echo "FAIL settings: no Stop command hook in $s"; fail=1; }
+limit=$(sed -n 's/^limit=\([0-9]*\).*/\1/p' "$hook")
+[ "$(printf '%s' "$entry" | jq -r '.timeout // 0')" -gt "$limit" ] && echo "ok   settings: timeout above the watchdog's ${limit}s" || { echo "FAIL settings: timeout must exceed ${limit}s"; fail=1; }
+run_as_claude() { printf '%s' "$first" | CLAUDE_PROJECT_DIR="$PWD" SNAKE_HOOK_TEST=1 SNAKE_TEST_CMD="$1" sh -c "$(printf '%s' "$entry" | jq -r .command)" 2>/dev/null; echo $?; }
+[ "$(run_as_claude true)" = 0 ] && [ "$(run_as_claude "$red")" = 2 ] && echo "ok   settings: command runs the hook" || { echo "FAIL settings: command does not run the hook"; fail=1; }
+
 if [ "$1" = "--gradle" ]; then
   t=app/src/test/java/dev/chavan/snake/StopHookProbeTest.kt
   trap 'rm -f "$t"' EXIT

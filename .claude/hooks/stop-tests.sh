@@ -10,9 +10,13 @@
 cd "$(dirname "$0")/../.." || exit 1
 
 cmd="./gradlew testDebugUnitTest --console=plain"
-# The hook's own tests swap in a command. Ignored unless asked for, so a stray
-# exported variable cannot quietly turn the gate off.
-[ "$SNAKE_HOOK_TEST" = 1 ] && cmd="${SNAKE_TEST_CMD:-$cmd}"
+limit=240  # seconds; under the 300 s Claude Code allows in settings.json
+# The hook's own tests swap in a command and a limit. Ignored unless asked for, so a
+# stray exported variable cannot quietly turn the gate off.
+if [ "$SNAKE_HOOK_TEST" = 1 ]; then
+  cmd="${SNAKE_TEST_CMD:-$cmd}"
+  limit="${SNAKE_HOOK_LIMIT:-$limit}"
+fi
 
 jbr="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 [ -z "$JAVA_HOME" ] && [ -d "$jbr" ] && export JAVA_HOME="$jbr"
@@ -28,7 +32,22 @@ fi
 
 log=$(mktemp) || { echo "stop hook: cannot create a temp log; tests not run" >&2; exit 1; }
 trap 'rm -f "$log"' EXIT
-sh -c "$cmd" >"$log" 2>&1 && exit 0
+
+# macOS has no timeout(1). Job control gives each background job its own process
+# group, so the watchdog can stop the whole tree, not just the shell.
+set -m
+sh -c "$cmd" </dev/null >"$log" 2>&1 &
+pid=$!
+( sleep "$limit"; kill -TERM -- -"$pid" ) >/dev/null 2>&1 &
+dog=$!
+wait "$pid"
+status=$?
+kill -TERM -- -"$dog" 2>/dev/null
+[ $status = 0 ] && exit 0
+if [ $status -ge 128 ]; then
+  printf 'stop hook: tests did not finish in %ss and were stopped. Not a pass.\n' "$limit" >&2
+  exit 1
+fi
 
 # Evidence the code is broken: a JUnit result line, Gradle's count, a Kotlin error.
 broken='^[A-Za-z0-9_.$]+ > .+ FAILED$|tests completed, [0-9]+ failed|^e: '
