@@ -32,3 +32,10 @@ trackpad swipes. Turn both on in `~/.android/avd/Snake_Pixel.avd/config.ini`, th
 
 Checked with `adb shell getevent -lt`: before these settings, left and right two-finger swipes
 sent no input at all and arrow keys never arrived.
+
+## Claude Code hook
+
+`.claude/settings.json` registers a Stop hook: when Claude Code runs in this folder,
+it cannot finish a turn while `testDebugUnitTest` fails or the code does not compile.
+Other problems (no JDK, no Android SDK) are shown as an error, never blocked on.
+Tests for the hook: `.claude/hooks/test_stop_tests.sh` (add `--gradle` for real runs).
