@@ -47,8 +47,12 @@ emulator, a finished game appears as a ghost in the next one, and the mode switc
   collision with you. When its game ends it stays where it crashed, faded further. When yours
   ends, it stops.
 - **Storage:** one text file per ghost: a header with a rules version, board size, seed, final
-  score and step count, then the letters. Saved with Android's `AtomicFile`, which writes and
-  renames, on the main thread at game over (it's under 2 KB; I'll measure it). The ghost file is
+  score and step count, then the letters. Saved by writing a temporary file, syncing it, then
+  renaming it over the old one (plain java.nio, not `AtomicFile`, so the failure paths run in JVM
+  tests), on the main thread at game over.
+  - **Measured:** the longest possible game (a bot that fills the board) is 35,822 moves, a
+    36 KB file, and verifying it takes 6 ms on the Mac. The cap is 100,000 moves; files over
+    101,000 bytes are refused unread. The ghost file is
   the single source of the best score.
   - **Upgrade:** BEST shows the larger of the old saved number and the ghost. The first finished
     game saves a ghost even if it doesn't beat the old number.
@@ -115,3 +119,40 @@ emulator, a finished game appears as a ghost in the next one, and the mode switc
     replays correctly, so there's no need.
   - 13, a fixed list instead of per-apple streams: about as simple as the choice, as the reviewer
     says; I kept the per-apple streams because the "k-th apple" rule is easier to state and test.
+
+## Review (failure-reviewer on Ghost.kt, 10 findings)
+- **Acted on:**
+  - 1 a huge file crashes every launch: size checked before reading.
+  - 2 an endless moves line freezes start-up: 100,000-move cap, measured above.
+  - 3 a read error loses the real best: `LoadResult.unreadable`, and the caller must not save;
+    bad contents are renamed `.bad` instead.
+  - 4 a daily game saved after midnight goes under the wrong date: the file date now comes from
+    the record's seed.
+  - 5 numbers wrap silently: parsed as Int with ranges checked.
+  - 6 a huge board: limited to 5..64.
+  - 7 temp files left behind: deleted on failure, and swept with old dailies.
+  - 8 a failed folder listing looks empty: now an IOException.
+  - 10 duplicate or unknown lines: refused.
+- **Accepted, not fixed:** 9, the folder is not synced after the rename, so a power cut right
+  after a save can bring back the previous ghost. Nothing is corrupted and only the newest best is
+  lost; `AtomicFile` has the same limit.
+
+## Review (test-auditor on steps 1-5, 14 findings)
+- **Acted on:**
+  - 1, 2 rules not pinned: PinnedRulesTest checks food, start and nextInt against an independent
+    Python copy, and a hand-worked daily ghost must still load.
+  - 3 recording not cleared on reset: tested.
+  - 4 daily save across midnight: tested.
+  - 5 untested load branches: mode, seed and unreadable are tested.
+  - 6 reasons not checked: every rejection checks its reason.
+  - 7 extreme seeds: tested.
+  - 8 weak property test: a daily run that counts retakes and eating retakes.
+  - 9 resize and play-again UI: tested.
+  - 10 board edges: tested.
+  - 11 clean-up failures: tested.
+  - 12 format edge cases: tested.
+  - 13 Rng edges: tested.
+  - 14 temp folders: now JUnit's `TemporaryFolder`.
+- **Noted, not a test gap:** Android Studio added the foojay toolchain plugin and a JDK 25
+  download setting to the project. They are left uncommitted and need the user's decision (and
+  dependency-vetter) before being kept.
