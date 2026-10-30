@@ -221,4 +221,16 @@ class GameTest {
         assertEquals(fresh.food, reused.food)
         assertEquals(fresh.snake.toList(), reused.snake.toList())
     }
+
+    @Test fun resetClearsTheRecordingSoPlayAgainStartsANewOne() {
+        val g = Game(10, 10, 9)
+        repeat(3) { g.step() }
+        g.reset(5)
+        assertEquals("", g.recording)
+        g.step()
+        assertEquals("RR", g.recording)
+        val r = Replay(Game(10, 10, 5), g.recording)
+        r.advance()
+        assertEquals(g.snake.toList(), r.game.snake.toList())
+    }
 }

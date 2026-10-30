@@ -344,4 +344,33 @@ class SnakeViewTest {
         onUi { view.tick() }
         assertEquals(Dir.RIGHT, view.game!!.dir) // no second turn from the rest of the drag
     }
+
+    @Test fun aResizedWindowKeepsTheSameGameAndBoardOnlyRescaled() {
+        swipe(200f, 0f)
+        repeat(3) { onUi { view.tick() } }
+        val game = view.game
+        val snake = game!!.snake.toList()
+        val cell = view.layout!!.cell
+        onUi { view.layout(0, 0, view.width / 2, view.height / 2) } // e.g. split screen
+        assertTrue(game === view.game)
+        assertEquals(snake, view.game!!.snake.toList())
+        assertEquals(SnakeView.COLS, view.layout!!.cols)
+        assertEquals(SnakeView.ROWS, view.layout!!.rows)
+        assertTrue(view.layout!!.cell < cell)
+    }
+
+    @Test fun playAgainGetsANewSeedAndAnEmptyRecording() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0)
+        onUi { repeat(SnakeView.COLS) { view.tick() } }
+        assertEquals(SnakeView.State.OVER, view.state)
+        val seed = view.game!!.seed
+        now += SnakeView.OVERLAY_DELAY_MS
+        tap()
+        assertEquals(SnakeView.State.READY, view.state)
+        assertTrue(view.game!!.seed != seed)
+        assertEquals("", view.game!!.recording)
+    }
 }

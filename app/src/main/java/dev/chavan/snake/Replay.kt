@@ -10,6 +10,8 @@ class Replay(val game: Game, private val moves: String) {
     init {
         require(moves.isNotEmpty()) { "empty recording" }
         moves.forEach { Dir.of(it) } // reject a damaged recording now, not halfway through a game
+        require(moves[0] == 'R' || moves[0] == 'L') { "a game starts facing R, or L if reversed, not '${moves[0]}'" }
+        require(game.fresh) { "replay needs a game that has not moved yet" }
         game.face(Dir.of(moves[0]))
     }
 

@@ -98,4 +98,13 @@ class BoardTest {
             assertEquals("swipe $dx,$dy moving up", want, steerDir(dx, dy, Dir.UP, 14f * dp))
         }
     }
+
+    @Test fun anOverflowingBoardStartsAtTheAreasCorner() {
+        for ((w, h) in listOf(100 to 100, 1000 to 100, 100 to 1000, 1000 to 0, 1000 to -50)) {
+            val b = fitBoard(30, 40, w, h, 16, 24, minCell = 8)
+            assertEquals("$w x $h", 8, b.cell)
+            if (w < 16 * 8) assertEquals("$w x $h", 30, b.left)
+            if (h < 24 * 8) assertEquals("$w x $h", 40, b.top)
+        }
+    }
 }

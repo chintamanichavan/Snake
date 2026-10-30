@@ -102,4 +102,67 @@ class ReplayTest {
     fun aRecordingWithAStrangeLetterIsRejected() {
         Replay(Game(10, 10, 1), "RRX")
     }
+
+    @Test fun replayMatchesInDailyModeTooAndReallyExercisesRetakes() {
+        val input = Rng(77)
+        val seed = dailySeed(java.time.LocalDate.of(2026, 10, 29))
+        var retakes = 0
+        var eatingRetakes = 0
+        repeat(150) { n ->
+            val g = Game(16, 24, seed, daily = true)
+            val snaps = ArrayList<Snap>()
+            val dirs = Dir.values()
+            if (input.nextInt(2) == 0) g.aim(dirs[input.nextInt(4)])
+            var guard = 0
+            while (!g.over && guard++ < 3_000) {
+                when (input.nextInt(10)) {
+                    0, 1 -> g.turn(dirs[input.nextInt(4)])
+                    2, 3 -> {
+                        val score = g.score
+                        if (snaps.isNotEmpty() && g.retake(dirs[input.nextInt(4)])) {
+                            snaps[snaps.size - 1] = snap(g)
+                            retakes++
+                            if (g.score > score) eatingRetakes++
+                        }
+                    }
+                    else -> { g.step(); snaps.add(snap(g)) }
+                }
+            }
+            val r = Replay(Game(16, 24, seed, daily = true), g.recording)
+            for ((i, want) in snaps.withIndex()) {
+                assertTrue(r.advance())
+                assertEquals("daily game $n step $i", want, snap(r.game))
+            }
+            assertFalse(r.advance())
+        }
+        assertTrue("no retakes happened", retakes > 0)
+        assertTrue("no retake ate an apple", eatingRetakes > 0)
+    }
+
+    @Test fun extremeSeedsReplayToo() {
+        for (seed in listOf(-1L, Long.MIN_VALUE, Long.MAX_VALUE, 0L)) {
+            val g = Game(12, 12, seed)
+            val input = Rng(seed)
+            while (!g.over) {
+                if (input.nextInt(3) == 0) g.turn(Dir.values()[input.nextInt(4)])
+                g.step()
+            }
+            val r = Replay(Game(12, 12, seed), g.recording)
+            while (r.advance()) {}
+            assertEquals("seed $seed", g.snake.toList(), r.game.snake.toList())
+            assertEquals("seed $seed", g.score, r.game.score)
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun aRecordingMustStartFacingLeftOrRight() {
+        Replay(Game(10, 10, 1), "URR") // the snake only ever starts facing right, or left if reversed
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun aReplayNeedsAFreshGame() {
+        val g = Game(10, 10, 1)
+        g.step()
+        Replay(g, "RR")
+    }
 }

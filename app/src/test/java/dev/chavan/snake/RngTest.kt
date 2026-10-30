@@ -33,4 +33,15 @@ class RngTest {
     fun nextIntRejectsAnEmptyRange() {
         Rng(1).nextInt(0)
     }
+
+    @Test fun nextIntAtTheEdgesOfItsRange() {
+        val r = Rng(3)
+        repeat(20) { assertEquals(0, r.nextInt(1)) }
+        repeat(20) { assertTrue(r.nextInt(Int.MAX_VALUE) in 0 until Int.MAX_VALUE) }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun nextIntRejectsANegativeRange() {
+        Rng(1).nextInt(-1)
+    }
 }
