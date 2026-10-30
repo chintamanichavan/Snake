@@ -156,3 +156,40 @@ emulator, a finished game appears as a ghost in the next one, and the mode switc
 - **Noted, not a test gap:** Android Studio added the foojay toolchain plugin and a JDK 25
   download setting to the project. They are left uncommitted and need the user's decision (and
   dependency-vetter) before being kept.
+
+## Review (failure-reviewer and test-auditor on the wiring, step 7)
+- **Acted on (failure review):**
+  - The date was read three times per game: now once, in `newGame`, passed to the activity.
+  - A daily board left on the start screen past midnight: refreshed when play starts and on resume.
+  - A failed save still celebrated: the game-over card now says "Ghost not saved".
+  - An unreadable file blocked saving all session: tried once more at game over.
+  - A set-aside ghost lowered the best: the best score is now a separate record (classic: the
+    old preferences number; daily: "date score"). This replaces "the ghost file is the single
+    source of the best".
+  - Two copies of the app could overwrite each other's best: `launchMode="singleTask"`.
+  - The chosen mode was lost when the screen was rebuilt: saved in the instance state.
+- **Accepted, not fixed (failure review):**
+  - Loading runs on the main thread. Measured on the emulator, the longest possible ghost
+    (35,822 moves, a full board) takes 100-160 ms; a damaged file at the 100,000-move limit takes
+    37 ms; ordinary ghosts take a few ms. It happens once per mode per launch. Moving it to a
+    background thread would add threading for a case no person is likely to reach.
+  - A wrong clock at launch can delete today's daily ghost (as designed).
+- **Acted on (test audit):**
+  - The unreadable-file test now uses an empty folder, so it fails if the guard is removed.
+  - New tests: a daily game across midnight; a broken ghosts folder; a whole game played only by
+    swipes, with a reversed start and retakes, reloaded after a relaunch; the first game after
+    opening the app; launch clean-up keeping today's file; a crashed ghost; every square checked;
+    the smaller rules (a score of 0 still leaves a ghost, a tie does not replace it, choosing the
+    current mode does nothing, Tab mid-game).
+  - Fixed seeds now start after the first layout, so the flow tests play the same games every run.
+  - The measurement test clears any leftover ghost and uses fixed seeds.
+- **Not done (test audit):**
+  - The score bar test checks that the ghost's score is drawn, not which number.
+  - Drawing cost was measured with a short ghost (as in real play); a board-filling ghost's
+    drawing cost was not measured on its own.
+
+## Measured (emulator, Pixel 9 image, Android 37)
+- Frames missing their deadline over 8 s of play: 0.21% without a ghost, 0-0.21% with one.
+  Budget was 1%.
+- Turn delay: median 47-49 ms, unchanged.
+- Saving a ghost: under 2 ms. Loading: see above.

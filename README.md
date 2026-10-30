@@ -8,6 +8,15 @@ Classic Snake for Android. Kotlin, a plain `View` drawn on a canvas, no UI libra
 
 Swipe to start and steer. Tap to pause. Tap after a crash to play again.
 
+## Ghost race and Daily challenge
+
+- **Ghost:** your best game replays as a faint snake beside you, step for step, with its score in
+  the middle of the score bar. Games are stored as plain text in the app's `files/ghosts` folder.
+- **Daily:** pick "Daily" on the start screen. Everyone gets the same 16 x 24 board that day (UTC):
+  the same start and the same k-th apple whenever its square is free. Unlimited tries.
+
+How it works and why: `docs/design/2026-10-28-ghost-and-daily.md`.
+
 ## Build and test
 
 Uses Android Studio's bundled JDK:
