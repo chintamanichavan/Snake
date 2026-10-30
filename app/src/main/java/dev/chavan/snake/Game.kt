@@ -1,6 +1,8 @@
 package dev.chavan.snake
 
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 enum class Dir(val dx: Int, val dy: Int, val letter: Char) {
     UP(0, -1, 'U'), DOWN(0, 1, 'D'), LEFT(-1, 0, 'L'), RIGHT(1, 0, 'R');
@@ -22,6 +24,9 @@ data class Cell(val x: Int, val y: Int) {
  * board at the same moment. A game keeps the date it started on, even across midnight.
  */
 fun dailySeed(date: LocalDate): Long = date.toEpochDay()
+
+/** Today's date for the daily board: the UTC date, whatever time zone the phone is in. */
+fun utcToday(clock: Clock): LocalDate = LocalDate.now(clock.withZone(ZoneOffset.UTC))
 
 /** The rules of Snake on a cols x rows board with solid walls. No Android code, so it is unit-tested directly. */
 class Game(val cols: Int, val rows: Int, seed: Long, val daily: Boolean = false) {

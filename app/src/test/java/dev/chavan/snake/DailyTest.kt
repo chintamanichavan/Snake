@@ -88,4 +88,11 @@ class DailyTest {
         assertEquals(g.snake.toList(), r.game.snake.toList())
         assertEquals(g.score, r.game.score)
     }
+
+    @Test fun todayIsTheUtcDateWhateverThePhonesTimeZone() {
+        // 23:30 on 29 Oct in Chicago is already 30 Oct in UTC, so the daily board has moved on.
+        val chicagoLateEvening = java.time.ZonedDateTime.of(2026, 10, 29, 23, 30, 0, 0, java.time.ZoneId.of("America/Chicago"))
+        val clock = java.time.Clock.fixed(chicagoLateEvening.toInstant(), java.time.ZoneId.of("America/Chicago"))
+        assertEquals(LocalDate.of(2026, 10, 30), utcToday(clock))
+    }
 }

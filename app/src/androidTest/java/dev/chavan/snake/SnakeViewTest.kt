@@ -444,4 +444,59 @@ class SnakeViewTest {
         startWithGhost(ghostGoingUp())
         assertTrue(middleOfScoreBarHasText())
     }
+
+    private fun tapAt(x: Float, y: Float) {
+        touch(MotionEvent.ACTION_DOWN, x, y)
+        touch(MotionEvent.ACTION_UP, x, y)
+    }
+
+    @Test fun theStartScreenSwitchesBetweenClassicAndDaily() {
+        val day = java.time.LocalDate.of(2026, 10, 29)
+        val modes = ArrayList<Boolean>()
+        onUi { view.today = { day }; view.onNewGame = { modes.add(it) } }
+        assertFalse(view.daily)
+        val d = view.chipBounds(daily = true)
+        tapAt(d.centerX(), d.centerY())
+        assertTrue(view.daily)
+        assertTrue(view.game!!.daily)
+        assertEquals(dailySeed(day), view.game!!.seed)
+        assertEquals(SnakeView.State.READY, view.state)
+        val c = view.chipBounds(daily = false)
+        tapAt(c.centerX(), c.centerY())
+        assertFalse(view.daily)
+        assertFalse(view.game!!.daily)
+        assertEquals(listOf(true, false), modes)
+    }
+
+    @Test fun twoDailyGamesOnOneDayStartTheSame() {
+        onUi { view.today = { java.time.LocalDate.of(2026, 10, 29) } }
+        val d = view.chipBounds(daily = true)
+        tapAt(d.centerX(), d.centerY())
+        val food = view.game!!.food
+        onUi { view.newGame() }
+        assertEquals(food, view.game!!.food)
+        assertEquals(Cell(4, 6), food) // the day's first apple, pinned in PinnedRulesTest
+    }
+
+    @Test fun theModeCannotChangeMidGame() {
+        swipe(200f, 0f)
+        val d = view.chipBounds(daily = true)
+        tapAt(d.centerX(), d.centerY()) // a tap while playing pauses, as before
+        assertFalse(view.daily)
+        assertEquals(SnakeView.State.PAUSED, view.state)
+    }
+
+    @Test fun tabSwitchesModeFromTheKeyboard() {
+        key(android.view.KeyEvent.KEYCODE_TAB)
+        assertTrue(view.daily)
+        key(android.view.KeyEvent.KEYCODE_TAB)
+        assertFalse(view.daily)
+    }
+
+    @Test fun theModeButtonsDoNotCoverTheSnake() {
+        val l = view.layout!!
+        val snakeTop = l.top + view.game!!.snake.first().y * l.cell
+        assertTrue(view.chipBounds(daily = true).bottom < snakeTop)
+        assertTrue(view.chipBounds(daily = false).bottom < snakeTop)
+    }
 }

@@ -12,6 +12,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import java.time.LocalDate
 
 /** Draws the game, turns swipes into moves, and runs the tick clock. */
 class SnakeView(context: Context) : View(context) {
@@ -79,6 +80,12 @@ class SnakeView(context: Context) : View(context) {
     }
     private val food = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = FOOD }
     private val spark = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val chipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = dp(1.5f) }
+    private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = dp(15f)
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+    }
     private val ghostPath = Path()
     private val ghostPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = GHOST
@@ -154,12 +161,7 @@ class SnakeView(context: Context) : View(context) {
             (width - 2 * margin).toInt(), (height - top - insetBottom - margin).toInt(), COLS, ROWS, dp(8f).toInt(),
         )
         // The board is a fixed size, so the game is made once; a resized window only rescales it.
-        if (game == null) {
-            game = Game(l.cols, l.rows, newSeed())
-            startGhost()
-            state = State.READY
-            foodAt = clock()
-        }
+        if (game == null) newGame()
         layout = l
         // Swipes from the screen's side edges would otherwise be taken as Android's back gesture.
         // Android honours at most 200dp of each edge, so cover the middle of the board.
@@ -171,15 +173,45 @@ class SnakeView(context: Context) : View(context) {
 
     /** Starts a fresh game, with a new seed and the current ghost from its beginning. */
     fun newGame() {
-        val g = game ?: return
         removeCallbacks(ticker)
-        g.reset(newSeed())
+        onNewGame(daily)
+        // A daily game takes the date it starts on and keeps it, even if it runs past midnight.
+        game = Game(COLS, ROWS, if (daily) dailySeed(today()) else newSeed(), daily)
         startGhost()
         particles.clear()
         newBest = false
         foodAt = clock()
         state = State.READY
         invalidate()
+    }
+
+    /** Daily challenge (the same board for everyone today) rather than classic. Chosen on the start screen. */
+    var daily = false
+        private set
+
+    /** Today's date for the daily board. Tests replace it. */
+    var today: () -> LocalDate = { utcToday(java.time.Clock.systemUTC()) }
+
+    /** Called with the mode just before each new game, so the activity can set that mode's ghost and best. */
+    var onNewGame: (daily: Boolean) -> Unit = {}
+
+    /** Switches mode on the start screen only; a game under way keeps its mode. */
+    fun chooseMode(daily: Boolean) {
+        if (state != State.READY || daily == this.daily) return
+        this.daily = daily
+        newGame()
+    }
+
+    /** Where the Classic and Daily buttons sit on the start screen, below its text. */
+    fun chipBounds(daily: Boolean): RectF {
+        val l = layout ?: return RectF()
+        val w = dp(132f)
+        val h = dp(44f)
+        val gap = dp(12f)
+        val cx = l.left + l.width / 2f
+        val top = l.top + l.height * TEXT_AT + dp(48f)
+        val left = if (daily) cx + gap / 2 else cx - gap / 2 - w
+        return RectF(left, top, left + w, top + h)
     }
 
     /**
@@ -289,7 +321,12 @@ class SnakeView(context: Context) : View(context) {
             MotionEvent.ACTION_UP -> if (!swiped) {
                 val dx = e.x - downX
                 val dy = e.y - downY
-                if (swipeDir(dx, dy, touchSlop) == null) {
+                if (swipeDir(dx, dy, touchSlop) == null && state == State.READY &&
+                    (chipBounds(true).contains(e.x, e.y) || chipBounds(false).contains(e.x, e.y))
+                ) {
+                    logInput(e, "mode button")
+                    chooseMode(chipBounds(true).contains(e.x, e.y))
+                } else if (swipeDir(dx, dy, touchSlop) == null) {
                     logInput(e, "tap")
                     press()
                     performClick()
@@ -344,6 +381,7 @@ class SnakeView(context: Context) : View(context) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> Dir.LEFT
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> Dir.RIGHT
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> { press(); return true }
+            KeyEvent.KEYCODE_TAB -> { chooseMode(!daily); return true }
             else -> return super.onKeyDown(keyCode, e)
         }
         steer(d)
@@ -457,7 +495,11 @@ class SnakeView(context: Context) : View(context) {
             postInvalidateOnAnimation()
         }
         when (state) {
-            State.READY -> overlay(canvas, l, "Snake", "Swipe to start", 1f)
+            State.READY -> {
+                overlay(canvas, l, if (daily) "Daily challenge" else "Snake", "Swipe to start", 1f)
+                drawChip(canvas, false, "Classic")
+                drawChip(canvas, true, "Daily · " + today().format(java.time.format.DateTimeFormatter.ofPattern("d MMM")))
+            }
             State.PAUSED -> overlay(canvas, l, "Paused", "Tap or swipe to continue", 1f)
             State.OVER -> if (shown > 0f) {
                 val heading = when {
@@ -584,15 +626,27 @@ class SnakeView(context: Context) : View(context) {
         }
     }
 
+    /** A start-screen mode button: filled when chosen, outlined when not. */
+    private fun drawChip(canvas: Canvas, forDaily: Boolean, text: String) {
+        val b = chipBounds(forDaily)
+        val chosen = forDaily == daily
+        chipPaint.style = if (chosen) Paint.Style.FILL else Paint.Style.STROKE
+        chipPaint.color = if (chosen) HEAD else MUTED
+        canvas.drawRoundRect(b, b.height() / 2, b.height() / 2, chipPaint)
+        chipText.color = if (chosen) BACKGROUND else TEXT
+        canvas.drawText(text, b.centerX(), b.centerY() + chipText.textSize / 3, chipText)
+    }
+
     private fun overlay(canvas: Canvas, l: BoardLayout, heading: String, sub: String, opacity: Float) {
         rect.set(l.left.toFloat(), l.top.toFloat(), (l.left + l.width).toFloat(), (l.top + l.height).toFloat())
         scrim.alpha = (170 * opacity).toInt()
         title.alpha = (255 * opacity).toInt()
         hint.alpha = (255 * opacity).toInt()
         canvas.drawRoundRect(rect, dp(10f), dp(10f), scrim)
-        // Text sits in the upper third: the snake starts on the middle row and must stay visible.
+        // Text (and the mode buttons below it) sit in the upper quarter: the snake starts on the
+        // middle row and must stay visible.
         val cx = rect.centerX()
-        val cy = rect.top + rect.height() / 3
+        val cy = rect.top + rect.height() * TEXT_AT
         canvas.drawText(heading, cx, cy - dp(6f), title)
         canvas.drawText(sub, cx, cy + dp(24f), hint)
     }
@@ -602,6 +656,7 @@ class SnakeView(context: Context) : View(context) {
         const val COLS = 16
         const val ROWS = 24
         const val FOOD_POP_MS = 280L
+        private const val TEXT_AT = 0.22f
         /** How early in a step a swipe may redo it. Later than this the head would visibly jump. */
         const val RETAKE_WINDOW = 0.25f
         const val OVERLAY_DELAY_MS = 650L
