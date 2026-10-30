@@ -50,7 +50,15 @@ class FeelMeasureTest {
     }
 
     @Test fun measureTurnDelayAndStalls() {
-        rule.scenario.onActivity { view = it.view; view.feedback = Silent }
+        rule.scenario.onActivity {
+            view = it.view
+            view.feedback = Silent
+            // No ghost left by another test, and the same game every run.
+            view.onNewGame = { _, _ -> }
+            view.ghost = null
+            view.seeds = { 7L }
+            view.newGame()
+        }
         val random = Random(7)
         val delays = ArrayList<Long>()
         swipe(0f, -200f)
@@ -102,6 +110,16 @@ class FeelMeasureTest {
             check(store.load(false, java.time.LocalDate.now(), SnakeView.COLS, SnakeView.ROWS).ghost != null)
             (System.nanoTime() - t) / 1_000_000.0
         }
+        // The worst a file can ask for: the full move limit, circling a 2x2 loop so the replay never
+        // ends early. Seed 42's first apple is far from the loop. Rejected, but only after a full replay.
+        val circling = GhostRecord(false, SnakeView.COLS, SnakeView.ROWS, 42, 0, "R" + "DLUR".repeat((MAX_MOVES - 1) / 4))
+        val worst = List(3) {
+            java.io.File(dir, "best.ghost").writeText(circling.encode())
+            val t = System.nanoTime()
+            check(store.load(false, java.time.LocalDate.now(), SnakeView.COLS, SnakeView.ROWS).ghost == null)
+            (System.nanoTime() - t) / 1_000_000.0
+        }
+        Log.i("SnakeMeasure", "circling ${circling.moves.length} moves, rejected after replay: ms ${worst.map { "%.1f".format(it) }}")
         Log.i("SnakeMeasure", "longest ghost ${r.moves.length} moves: save ms ${saves.map { "%.1f".format(it) }} load+verify ms ${loads.map { "%.1f".format(it) }}")
         dir.deleteRecursively()
     }
@@ -123,6 +141,7 @@ class FeelMeasureTest {
         rule.scenario.onActivity { a ->
             view.onNewGame = { _, _ -> }
             view.ghost = ghost
+            view.seeds = { 7L } // both runs play the same game, with and without the ghost
             view.newGame()
             a.window.addOnFrameMetricsAvailableListener(listener, handler)
         }
@@ -139,6 +158,7 @@ class FeelMeasureTest {
         }
         rule.scenario.onActivity { a -> a.window.removeOnFrameMetricsAvailableListener(listener) }
         val n = total.get()
+        if (n == 0) return "no frames recorded"
         return "frames=$n missed deadline=${missed.get()} (${"%.2f".format(100.0 * missed.get() / n)}%)"
     }
 

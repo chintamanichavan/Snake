@@ -506,4 +506,69 @@ class SnakeViewTest {
         assertTrue(view.chipBounds(daily = true).bottom < snakeTop)
         assertTrue(view.chipBounds(daily = false).bottom < snakeTop)
     }
+
+    /** Whether each board square is lit (anything drawn on it) or plain board. */
+    private fun litSquares(): Set<Cell> {
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        onUi { view.draw(Canvas(bmp)) }
+        val l = view.layout!!
+        val lit = HashSet<Cell>()
+        for (y in 0 until l.rows) for (x in 0 until l.cols) {
+            val p = bmp.getPixel(l.left + x * l.cell + l.cell / 2, l.top + y * l.cell + l.cell / 2)
+            val bright = maxOf(android.graphics.Color.red(p), android.graphics.Color.green(p), android.graphics.Color.blue(p))
+            if (bright > 60) lit.add(Cell(x, y))
+        }
+        return lit
+    }
+
+    @Test fun everySquareIsLitOnlyByTheGhostTheSnakeOrTheApple() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        startWithGhost(ghostGoingUp())
+        swipe(0f, 200f)
+        view.game!!.food = Cell(0, 0)
+        repeat(4) { onUi { view.tick() } }
+        now += 1_000 // slides finished
+        val expected = (view.ghostGame!!.snake + view.game!!.snake + Cell(0, 0)).toSet()
+        assertEquals(expected, litSquares())
+    }
+
+    @Test fun aCrashedGhostStaysWhereItCrashedFainter() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        startWithGhost(ghostGoingUp())
+        swipe(200f, 0f)
+        view.game!!.food = Cell(0, 0)
+        val l = view.layout!!
+        fun redAt(c: Cell): Int {
+            val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            onUi { view.draw(Canvas(bmp)) }
+            return android.graphics.Color.red(bmp.getPixel(l.left + c.x * l.cell + l.cell / 2, l.top + c.y * l.cell + l.cell / 2))
+        }
+        // Your snake loops right, down and left so it outlives the ghost, which hits the top wall.
+        val route = List(5) { Dir.RIGHT } + List(5) { Dir.DOWN } + List(6) { Dir.LEFT }
+        var aliveRed = 0
+        for ((i, d) in route.withIndex()) {
+            onUi { view.game!!.turn(d); view.tick() }
+            now += 1_000
+            if (i == 5) aliveRed = redAt(view.ghostGame!!.snake.first())
+        }
+        assertEquals(SnakeView.State.RUNNING, view.state)
+        val gg = view.ghostGame!!
+        assertTrue(gg.over)
+        val where = gg.snake.toList()
+        onUi { view.tick() }
+        assertEquals(where, view.ghostGame!!.snake.toList()) // it no longer moves
+        now += 1_000
+        val crashedRed = redAt(where.first())
+        assertTrue("fainter after its crash: $crashedRed < $aliveRed", crashedRed < aliveRed)
+        assertTrue("still visible", crashedRed > 30)
+    }
+
+    @Test fun tabDoesNotChangeTheModeMidGame() {
+        swipe(200f, 0f)
+        key(android.view.KeyEvent.KEYCODE_TAB)
+        assertFalse(view.daily)
+        assertEquals(SnakeView.State.RUNNING, view.state)
+    }
 }
