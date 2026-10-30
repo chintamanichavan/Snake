@@ -6,25 +6,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoardTest {
-    @Test fun boardFitsWidthAndCentres() {
-        // 1000 px wide, 16 columns -> 62 px cells, 992 px board, 4 px either side.
-        val b = layoutBoard(0, 100, 1000, 1500, 16)
+    @Test fun boardIsAlwaysTheFixedSizeAndFillsTheTighterSide() {
+        // 1000 x 2000 px: width allows 62 px squares, height allows 83, so width decides.
+        val b = fitBoard(0, 100, 1000, 2000, 16, 24, minCell = 20)
+        assertEquals(16, b.cols)
+        assertEquals(24, b.rows)
         assertEquals(62, b.cell)
-        assertEquals(4, b.left)
-        assertEquals(1500 / 62, b.rows)
-        assertTrue(b.top >= 100 && b.top + b.height <= 1600)
+        assertEquals(4, b.left) // centred: 1000 - 16 * 62 = 8 px spare
+        assertEquals(100 + (2000 - 24 * 62) / 2, b.top)
     }
 
-    @Test fun boardNeverSpillsOutOfItsArea() {
-        for (w in listOf(320, 411, 720, 1080, 1440)) for (h in listOf(400, 900, 2000)) {
-            val b = layoutBoard(10, 20, w, h, 16)
-            assertTrue(b.left >= 10 && b.left + b.width <= 10 + w)
-            if (h >= 5 * b.cell) assertTrue(b.top >= 20 && b.top + b.height <= 20 + h)
+    @Test fun aWideShortAreaIsDecidedByHeight() {
+        val b = fitBoard(0, 0, 2000, 480, 16, 24, minCell = 10)
+        assertEquals(20, b.cell)
+        assertEquals((2000 - 16 * 20) / 2, b.left)
+    }
+
+    @Test fun boardStaysInsideItsAreaWheneverItCan() {
+        for (w in listOf(320, 411, 720, 1080, 1440)) for (h in listOf(500, 900, 2000)) {
+            val b = fitBoard(10, 20, w, h, 16, 24, minCell = 8)
+            assertTrue("$w x $h", b.left >= 10 && b.left + b.width <= 10 + w)
+            assertTrue("$w x $h", b.top >= 20 && b.top + b.height <= 20 + h)
         }
     }
 
-    @Test fun shortAreaStillGivesAPlayableBoard() {
-        assertEquals(5, layoutBoard(0, 0, 1000, 10, 16).rows)
+    @Test fun aTinyAreaKeepsTheMinimumSquareRatherThanShrinkingToNothing() {
+        val b = fitBoard(0, 0, 100, 100, 16, 24, minCell = 8)
+        assertEquals(8, b.cell)
+        assertEquals(24, b.rows) // still the full board, running past the area
     }
 
     @Test fun smallMovementsAreNotSwipes() {

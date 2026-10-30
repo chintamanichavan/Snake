@@ -9,13 +9,14 @@ data class BoardLayout(val cols: Int, val rows: Int, val cell: Int, val left: In
 }
 
 /**
- * Fits a board with a fixed number of columns into the given area, taking as many rows as fit,
- * and centres it. The column count is fixed so the game feels the same on every phone width.
+ * Fits a board of exactly cols x rows into the area, with square cells as large as both sides
+ * allow, centred. The size never changes with the screen, so a game (or a ghost of one) is the same
+ * on every phone. Cells never go below minCell: on a window too small for that, the board starts
+ * at the area's corner and runs past it rather than becoming unreadable.
  */
-fun layoutBoard(areaLeft: Int, areaTop: Int, areaWidth: Int, areaHeight: Int, cols: Int): BoardLayout {
-    val cell = maxOf(1, areaWidth / cols)
-    val rows = maxOf(5, areaHeight / cell)
-    val left = areaLeft + (areaWidth - cols * cell) / 2
+fun fitBoard(areaLeft: Int, areaTop: Int, areaWidth: Int, areaHeight: Int, cols: Int, rows: Int, minCell: Int): BoardLayout {
+    val cell = maxOf(minCell, minOf(areaWidth / cols, areaHeight / rows))
+    val left = areaLeft + maxOf(0, (areaWidth - cols * cell) / 2)
     val top = areaTop + maxOf(0, (areaHeight - rows * cell) / 2)
     return BoardLayout(cols, rows, cell, left, top)
 }

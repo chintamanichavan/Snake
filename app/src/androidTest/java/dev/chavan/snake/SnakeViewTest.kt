@@ -63,7 +63,7 @@ class SnakeViewTest {
     @Test fun boardFillsScreenBelowTheScore() {
         val l = view.layout!!
         assertEquals(SnakeView.COLS, l.cols)
-        assertTrue(l.rows >= SnakeView.COLS) // a portrait phone gives a tall board
+        assertEquals(SnakeView.ROWS, l.rows) // the same board on every phone
         assertTrue(l.left >= 0 && l.left + l.width <= view.width)
         assertTrue(l.top > view.insetTop && l.top + l.height <= view.height - view.insetBottom)
     }

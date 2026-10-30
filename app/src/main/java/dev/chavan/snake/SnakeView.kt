@@ -142,12 +142,12 @@ class SnakeView(context: Context) : View(context) {
     fun relayout() {
         if (width == 0 || height == 0) return
         val top = insetTop + hudHeight
-        val l = layoutBoard(
+        val l = fitBoard(
             margin.toInt(), top.toInt(),
-            (width - 2 * margin).toInt(), (height - top - insetBottom - margin).toInt(), COLS,
+            (width - 2 * margin).toInt(), (height - top - insetBottom - margin).toInt(), COLS, ROWS, dp(8f).toInt(),
         )
-        // The board size only changes if the window does; keep the game going if it still fits.
-        if (game?.rows != l.rows) {
+        // The board is a fixed size, so the game is made once; a resized window only rescales it.
+        if (game == null) {
             game = Game(l.cols, l.rows, newSeed())
             state = State.READY
             foodAt = clock()
@@ -538,7 +538,9 @@ class SnakeView(context: Context) : View(context) {
     }
 
     companion object {
+        // Fixed for every phone, so classic boards, daily boards and ghosts all line up.
         const val COLS = 16
+        const val ROWS = 24
         const val FOOD_POP_MS = 280L
         /** How early in a step a swipe may redo it. Later than this the head would visibly jump. */
         const val RETAKE_WINDOW = 0.25f
