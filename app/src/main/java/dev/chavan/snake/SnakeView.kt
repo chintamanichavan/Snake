@@ -79,6 +79,13 @@ class SnakeView(context: Context) : View(context) {
     }
     private val food = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = FOOD }
     private val spark = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val ghostPath = Path()
+    private val ghostPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = GHOST
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val eye = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BACKGROUND }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = MUTED
@@ -149,6 +156,7 @@ class SnakeView(context: Context) : View(context) {
         // The board is a fixed size, so the game is made once; a resized window only rescales it.
         if (game == null) {
             game = Game(l.cols, l.rows, newSeed())
+            startGhost()
             state = State.READY
             foodAt = clock()
         }
@@ -161,6 +169,33 @@ class SnakeView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Starts a fresh game, with a new seed and the current ghost from its beginning. */
+    fun newGame() {
+        val g = game ?: return
+        removeCallbacks(ticker)
+        g.reset(newSeed())
+        startGhost()
+        particles.clear()
+        newBest = false
+        foodAt = clock()
+        state = State.READY
+        invalidate()
+    }
+
+    /**
+     * The best game so far, replayed alongside the next game started. Set by the activity after
+     * it has loaded and checked the file.
+     */
+    var ghost: GhostRecord? = null
+    private var ghostRun: Replay? = null
+
+    /** The ghost's game as it stands, or null with no ghost. */
+    val ghostGame: Game? get() = ghostRun?.game
+
+    private fun startGhost() {
+        ghostRun = ghost?.replay()
+    }
+
     /** One step of the game. Public so tests can drive the clock. */
     fun tick() {
         val g = game ?: return
@@ -169,6 +204,8 @@ class SnakeView(context: Context) : View(context) {
         val eaten = g.food
         val before = g.dir
         val ate = g.step()
+        // Lockstep: one ghost step per real step. A retake redoes a step, so it does not get one.
+        ghostRun?.advance()
         stepAt = clock()
         afterStep(g, before, ate, eaten, stepAt)
     }
@@ -346,14 +383,7 @@ class SnakeView(context: Context) : View(context) {
         val g = game ?: return
         when (state) {
             // Ignore presses until the card shows, so a panicked swipe can't skip past it.
-            State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) {
-                g.reset(newSeed())
-                particles.clear()
-                newBest = false
-                foodAt = clock()
-                state = State.READY
-                invalidate()
-            }
+            State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) newGame()
             State.PAUSED -> start()
             State.RUNNING -> pause()
             State.READY -> {}
@@ -410,6 +440,7 @@ class SnakeView(context: Context) : View(context) {
         val settling = state == State.OVER && now - crashAt < OVERLAY_DELAY_MS + OVERLAY_FADE_MS
         if (state == State.RUNNING || particles.alive || now - foodAt < FOOD_POP_MS || settling) postInvalidateOnAnimation()
         val line = snakeLine(g.snake, g.leftTail, t)
+        ghostGame?.let { drawGhost(canvas, l, it, t) }
         if (!crashed) drawSnake(canvas, l, g, line)
 
         for (p in particles.list) {
@@ -438,6 +469,23 @@ class SnakeView(context: Context) : View(context) {
             }
             State.RUNNING -> {}
         }
+    }
+
+    /**
+     * The ghost as one pale, see-through tube under your snake. It is a single path so the
+     * translucent pieces don't overlap into darker spots at the joints. Once its game is over it
+     * stays where it crashed, fainter.
+     */
+    private fun drawGhost(canvas: Canvas, l: BoardLayout, gg: Game, t: Float) {
+        val line = snakeLine(gg.snake, gg.leftTail, if (gg.over) 1f else t)
+        ghostPath.reset()
+        line.forEachIndexed { i, p ->
+            if (i == 0) ghostPath.moveTo(px(l, p.x), py(l, p.y)) else ghostPath.lineTo(px(l, p.x), py(l, p.y))
+        }
+        if (line.size == 1) ghostPath.lineTo(px(l, line[0].x) + 0.01f, py(l, line[0].y))
+        ghostPaint.strokeWidth = l.cell * 0.76f
+        ghostPaint.alpha = if (gg.over) 40 else 85
+        canvas.drawPath(ghostPath, ghostPaint)
     }
 
     private fun drawSnake(canvas: Canvas, l: BoardLayout, g: Game, line: List<Pos>) {
@@ -485,6 +533,18 @@ class SnakeView(context: Context) : View(context) {
         canvas.drawText(g.score.toString(), left, baseline, number)
         canvas.restore()
         number.color = TEXT
+
+        // The ghost's score in the middle, so you can see at a glance who is ahead.
+        ghostGame?.let {
+            label.textAlign = Paint.Align.CENTER
+            number.textAlign = Paint.Align.CENTER
+            number.color = GHOST
+            canvas.drawText("GHOST", width / 2f, baseline - dp(32f), label)
+            canvas.drawText(it.score.toString(), width / 2f, baseline, number)
+            label.textAlign = Paint.Align.LEFT
+            number.textAlign = Paint.Align.LEFT
+            number.color = TEXT
+        }
 
         // Once this game passes the old best, BEST becomes NEW BEST and follows the score.
         val beating = g.score > best || newBest
@@ -555,6 +615,7 @@ class SnakeView(context: Context) : View(context) {
         val FOOD = Color.rgb(255, 112, 92)
         val TEXT = Color.rgb(236, 242, 238)
         val MUTED = Color.rgb(132, 150, 140)
+        val GHOST = Color.rgb(214, 226, 255)
 
         fun blend(a: Int, b: Int, t: Float): Int = Color.rgb(
             (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),

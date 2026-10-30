@@ -373,4 +373,75 @@ class SnakeViewTest {
         assertTrue(view.game!!.seed != seed)
         assertEquals("", view.game!!.recording)
     }
+
+    /** A ghost that went up from the start and kept going until it hit the top wall. */
+    private fun ghostGoingUp(): GhostRecord {
+        val g = Game(SnakeView.COLS, SnakeView.ROWS, 5)
+        g.turn(Dir.UP)
+        while (!g.over) g.step()
+        return GhostRecord.of(g)
+    }
+
+    private fun startWithGhost(ghost: GhostRecord?) {
+        onUi { view.ghost = ghost; view.newGame() }
+    }
+
+    @Test fun theGhostStepsWithYouAndNotOnARetake() {
+        var now = 10_000L
+        onUi { view.clock = { now } }
+        startWithGhost(ghostGoingUp())
+        val start = view.ghostGame!!.snake.first()
+        swipe(0f, 200f) // you go down; the ghost goes up
+        view.game!!.food = Cell(0, 0)
+        onUi { view.tick() }
+        assertEquals(Cell(start.x, start.y - 1), view.ghostGame!!.snake.first())
+        now += 5 // just after the step: a swipe now redoes your step
+        swipe(200f, 0f)
+        assertEquals(Dir.RIGHT, view.game!!.dir)
+        assertEquals(Cell(start.x, start.y - 1), view.ghostGame!!.snake.first()) // ghost did not move again
+        onUi { view.tick() }
+        assertEquals(Cell(start.x, start.y - 2), view.ghostGame!!.snake.first())
+    }
+
+    @Test fun theGhostIsDrawnWhereItsGameSaysAndNowhereElse() {
+        var now = SystemClock.uptimeMillis() + 60_000
+        onUi { view.clock = { now } }
+        startWithGhost(ghostGoingUp())
+        swipe(0f, 200f)
+        view.game!!.food = Cell(0, 0)
+        repeat(4) { onUi { view.tick() } }
+        now += 1_000 // let the slide into the new cells finish
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        onUi { view.draw(Canvas(bmp)) }
+        val l = view.layout!!
+        fun at(c: Cell) = bmp.getPixel(l.left + c.x * l.cell + l.cell / 2, l.top + c.y * l.cell + l.cell / 2)
+        val ghostHead = view.ghostGame!!.snake.first()
+        val empty = Cell(14, 3)
+        assertTrue(empty !in view.ghostGame!!.snake && empty !in view.game!!.snake)
+        assertTrue("ghost cell should be lighter than the board", android.graphics.Color.red(at(ghostHead)) > android.graphics.Color.red(at(empty)) + 20)
+        assertTrue(ghostHead !in view.game!!.snake)
+    }
+
+    @Test fun withoutAGhostNothingExtraIsDrawn() {
+        startWithGhost(null)
+        assertEquals(null, view.ghostGame)
+        swipe(0f, 200f)
+        onUi { view.tick() } // no crash with no ghost
+    }
+
+    @Test fun theScoreBarShowsTheGhostOnlyWhenThereIsOne() {
+        fun middleOfScoreBarHasText(): Boolean {
+            val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            onUi { view.draw(Canvas(bmp)) }
+            val top = view.insetTop
+            for (y in top until view.layout!!.top step 2) for (x in view.width * 2 / 5 until view.width * 3 / 5 step 2) {
+                if (android.graphics.Color.red(bmp.getPixel(x, y)) > 120) return true
+            }
+            return false
+        }
+        startWithGhost(null)
+        assertFalse(middleOfScoreBarHasText())
+        startWithGhost(ghostGoingUp())
+        assertTrue(middleOfScoreBarHasText())
+    }
 }
