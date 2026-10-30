@@ -26,8 +26,15 @@ class SnakeView(context: Context) : View(context) {
         private set
     var best = 0
 
-    /** Called when a game ends, with its final score. */
-    var onGameOver: (Int) -> Unit = {}
+    /**
+     * Called when a game ends, with the finished game, so it can be kept as a ghost. Returns a
+     * short note for the game-over card when something went wrong, such as the ghost not saving.
+     */
+    var onGameOver: (Game) -> String? = { null }
+
+    /** The note shown on the game-over card, if any. */
+    var notice: String? = null
+        private set
 
     /** Tests turn this off and call tick() themselves so nothing depends on timing. */
     var autoTick = true
@@ -174,9 +181,12 @@ class SnakeView(context: Context) : View(context) {
     /** Starts a fresh game, with a new seed and the current ghost from its beginning. */
     fun newGame() {
         removeCallbacks(ticker)
-        onNewGame(daily)
-        // A daily game takes the date it starts on and keeps it, even if it runs past midnight.
-        game = Game(COLS, ROWS, if (daily) dailySeed(today()) else newSeed(), daily)
+        // The date is read once, here: the board, the ghost and the best all come from the same
+        // day. A daily game keeps that date even if it runs past midnight.
+        val date = today()
+        onNewGame(daily, date)
+        game = Game(COLS, ROWS, if (daily) dailySeed(date) else seeds(), daily)
+        notice = null
         startGhost()
         particles.clear()
         newBest = false
@@ -192,8 +202,22 @@ class SnakeView(context: Context) : View(context) {
     /** Today's date for the daily board. Tests replace it. */
     var today: () -> LocalDate = { utcToday(java.time.Clock.systemUTC()) }
 
-    /** Called with the mode just before each new game, so the activity can set that mode's ghost and best. */
-    var onNewGame: (daily: Boolean) -> Unit = {}
+    /** Called with the mode and date just before each new game, so the activity can set that game's ghost and best. */
+    var onNewGame: (daily: Boolean, date: LocalDate) -> Unit = { _, _ -> }
+
+    /** Before the first game is made: start in this mode, e.g. the one chosen before the screen was rebuilt. */
+    fun startIn(daily: Boolean) {
+        if (game == null) this.daily = daily
+    }
+
+    /**
+     * A daily board left waiting on the start screen past midnight UTC is swapped for the new
+     * day's, so a best is never set on yesterday's board by mistake.
+     */
+    fun refreshStaleDaily() {
+        val g = game ?: return
+        if (state == State.READY && daily && g.seed != dailySeed(today())) newGame()
+    }
 
     /** Switches mode on the start screen only; a game under way keeps its mode. */
     fun chooseMode(daily: Boolean) {
@@ -274,7 +298,7 @@ class SnakeView(context: Context) : View(context) {
                 best = g.score
                 feedback.newBest()
             }
-            onGameOver(g.score)
+            notice = onGameOver(g)
         }
         invalidate()
     }
@@ -388,8 +412,11 @@ class SnakeView(context: Context) : View(context) {
         return true
     }
 
-    /** A fresh seed for each classic game; only its value needs recording, not where it came from. */
-    private fun newSeed() = kotlin.random.Random.nextLong()
+    /**
+     * Where each classic game's seed comes from. Only the value is recorded, not its source, so
+     * tests swap in fixed seeds to play the same game every run.
+     */
+    var seeds: () -> Long = { kotlin.random.Random.nextLong() }
 
     /** The way turns are measured against, or null before the game starts when any way goes. */
     private fun heading(): Dir? = if (state == State.READY) null else game?.heading
@@ -398,7 +425,11 @@ class SnakeView(context: Context) : View(context) {
     fun steer(d: Dir) {
         val g = game ?: return
         when (state) {
-            State.READY -> { g.aim(d); start() }
+            State.READY -> {
+                refreshStaleDaily()
+                game!!.aim(d)
+                start()
+            }
             State.PAUSED -> { g.turn(d); start() }
             State.RUNNING -> {
                 // A swipe just after a step redoes that step in the new direction instead of
@@ -498,7 +529,9 @@ class SnakeView(context: Context) : View(context) {
             State.READY -> {
                 overlay(canvas, l, if (daily) "Daily challenge" else "Snake", "Swipe to start", 1f)
                 drawChip(canvas, false, "Classic")
-                drawChip(canvas, true, "Daily · " + today().format(java.time.format.DateTimeFormatter.ofPattern("d MMM")))
+                // The button shows the date of the board in play, which is the day it was made.
+                val boardDay = if (g.daily) LocalDate.ofEpochDay(g.seed) else today()
+                drawChip(canvas, true, "Daily · " + boardDay.format(java.time.format.DateTimeFormatter.ofPattern("d MMM")))
             }
             State.PAUSED -> overlay(canvas, l, "Paused", "Tap or swipe to continue", 1f)
             State.OVER -> if (shown > 0f) {
@@ -507,7 +540,8 @@ class SnakeView(context: Context) : View(context) {
                     newBest -> "New best!"
                     else -> "Game over"
                 }
-                overlay(canvas, l, heading, "Score ${g.score}  ·  Tap to play again", shown)
+                // A problem worth knowing (the ghost could not be saved) takes the place of the hint.
+                overlay(canvas, l, heading, "Score ${g.score}  ·  " + (notice ?: "Tap to play again"), shown)
             }
             State.RUNNING -> {}
         }

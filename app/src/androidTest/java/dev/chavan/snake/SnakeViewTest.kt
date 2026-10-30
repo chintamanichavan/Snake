@@ -4,21 +4,23 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.SystemClock
 import android.view.MotionEvent
-import androidx.test.ext.junit.rules.ActivityScenarioRule
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Runs the real activity on a device or emulator and drives it with real touch events. */
 @RunWith(AndroidJUnit4::class)
 class SnakeViewTest {
-    @get:Rule val rule = ActivityScenarioRule(MainActivity::class.java)
+    // Launched by hand in setUp, after the ghost files are cleared: a rule would launch first,
+    // and a ghost left by an earlier test would be loaded and drawn over the board.
+    private lateinit var scenario: ActivityScenario<MainActivity>
 
     private lateinit var view: SnakeView
 
@@ -32,14 +34,18 @@ class SnakeViewTest {
     private val recorder = Recorder()
 
     @Before fun setUp() {
-        InstrumentationRegistry.getInstrumentation().targetContext
-            .getSharedPreferences("snake", 0).edit().clear().commit()
-        rule.scenario.onActivity {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.getSharedPreferences("snake", 0).edit().clear().commit()
+        java.io.File(context.filesDir, "ghosts").deleteRecursively()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        scenario.onActivity {
             view = it.view
             view.autoTick = false
             view.feedback = recorder
         }
     }
+
+    @After fun tearDown() = scenario.close()
 
     private fun onUi(block: () -> Unit) = InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
 
@@ -102,9 +108,10 @@ class SnakeViewTest {
         assertTrue(view.newBest)
         assertEquals(view.game!!.snake.size, view.particles.list.count { it.size == 0.38f }) // one piece per segment, besides the sparks
         assertEquals(1, view.best)
-        val saved = InstrumentationRegistry.getInstrumentation().targetContext
-            .getSharedPreferences("snake", 0).getInt(MainActivity.BEST, 0)
-        assertEquals(1, saved)
+        val ghosts = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "ghosts")
+        // The game is kept as the ghost. Read the file without replaying it: this test placed the
+        // apple by hand, which no replay can reproduce (GhostFlowTest plays real games for that).
+        assertEquals(1, decodeGhost(java.io.File(ghosts, "best.ghost").readText()).score)
 
         tap() // too soon: the game-over card is not up yet
         assertEquals(SnakeView.State.OVER, view.state)
@@ -182,8 +189,8 @@ class SnakeViewTest {
     @Test fun everySwipeDirectionStartsTheGame() {
         for (d in Dir.values()) {
             onUi { view.game!!.reset(1) }
-            rule.scenario.recreate()
-            rule.scenario.onActivity { view = it.view; view.autoTick = false; view.feedback = recorder }
+            scenario.recreate()
+            scenario.onActivity { view = it.view; view.autoTick = false; view.feedback = recorder }
             swipe(d.dx * 200f, d.dy * 200f)
             assertEquals(SnakeView.State.RUNNING, view.state)
             onUi { view.tick() }
@@ -383,7 +390,7 @@ class SnakeViewTest {
     }
 
     private fun startWithGhost(ghost: GhostRecord?) {
-        onUi { view.ghost = ghost; view.newGame() }
+        onUi { view.onNewGame = { _, _ -> }; view.ghost = ghost; view.newGame() }
     }
 
     @Test fun theGhostStepsWithYouAndNotOnARetake() {
@@ -453,7 +460,7 @@ class SnakeViewTest {
     @Test fun theStartScreenSwitchesBetweenClassicAndDaily() {
         val day = java.time.LocalDate.of(2026, 10, 29)
         val modes = ArrayList<Boolean>()
-        onUi { view.today = { day }; view.onNewGame = { modes.add(it) } }
+        onUi { view.today = { day }; view.onNewGame = { d, _ -> modes.add(d) } }
         assertFalse(view.daily)
         val d = view.chipBounds(daily = true)
         tapAt(d.centerX(), d.centerY())
