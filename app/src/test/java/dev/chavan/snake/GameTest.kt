@@ -1,6 +1,5 @@
 package dev.chavan.snake
 
-import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -8,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GameTest {
-    private fun game(cols: Int = 10, rows: Int = 10) = Game(cols, rows, Random(1))
+    private fun game(cols: Int = 10, rows: Int = 10) = Game(cols, rows, 1)
 
     @Test fun startsWithThreeCellsMovingRight() {
         val g = game()
@@ -19,7 +18,7 @@ class GameTest {
 
     @Test fun foodNeverStartsOnTheSnake() {
         repeat(200) { seed ->
-            val g = Game(6, 6, Random(seed))
+            val g = Game(6, 6, seed.toLong())
             assertFalse(g.food in g.snake)
         }
     }
@@ -101,7 +100,7 @@ class GameTest {
 
     @Test fun fillingTheBoardWins() {
         // The snake covers every cell but (4,0); its head at (3,0) moves right onto the last food.
-        val g = Game(5, 5, Random(3))
+        val g = Game(5, 5, 3)
         g.snake.clear()
         g.snake.addFirst(Cell(3, 0))
         for (y in 0 until 5) for (x in 0 until 5) {
@@ -142,7 +141,7 @@ class GameTest {
         val g = game()
         g.step()
         assertFalse(g.fresh)
-        g.reset()
+        g.reset(2)
         assertTrue(g.fresh)
     }
 
@@ -196,11 +195,30 @@ class GameTest {
         assertTrue(g.retake(Dir.UP))
         assertEquals(1, g.score)
 
-        val h = Game(10, 10, Random(1))
+        val h = Game(10, 10, 1)
         h.food = Cell(0, 0)
         repeat(5) { h.step() } // head (9,5) against the right wall
         h.turn(Dir.UP); h.step() // head (9,4), moving up
         assertTrue(h.retake(Dir.RIGHT)) // redo that step going right: into the wall
         assertTrue(h.over)
+    }
+
+    @Test fun theSameSeedGivesTheSameGame() {
+        val a = Game(10, 10, 77)
+        val b = Game(10, 10, 77)
+        repeat(30) {
+            assertEquals(a.food, b.food)
+            a.step(); b.step()
+        }
+    }
+
+    @Test fun resetWithASeedStartsThatGameAfresh() {
+        val fresh = Game(10, 10, 5)
+        val reused = Game(10, 10, 99)
+        repeat(4) { reused.step() }
+        reused.reset(5)
+        assertEquals(5L, reused.seed)
+        assertEquals(fresh.food, reused.food)
+        assertEquals(fresh.snake.toList(), reused.snake.toList())
     }
 }

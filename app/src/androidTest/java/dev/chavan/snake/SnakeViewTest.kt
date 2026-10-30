@@ -181,7 +181,7 @@ class SnakeViewTest {
 
     @Test fun everySwipeDirectionStartsTheGame() {
         for (d in Dir.values()) {
-            onUi { view.game!!.reset() }
+            onUi { view.game!!.reset(1) }
             rule.scenario.recreate()
             rule.scenario.onActivity { view = it.view; view.autoTick = false; view.feedback = recorder }
             swipe(d.dx * 200f, d.dy * 200f)

@@ -42,7 +42,7 @@ class MotionTest {
     }
 
     @Test fun gameReportsTheCellTheTailLeft() {
-        val g = Game(10, 10, kotlin.random.Random(1))
+        val g = Game(10, 10, 1)
         g.food = Cell(0, 0)
         val tail = g.snake.last()
         g.step()

@@ -1,7 +1,5 @@
 package dev.chavan.snake
 
-import kotlin.random.Random
-
 enum class Dir(val dx: Int, val dy: Int) {
     UP(0, -1), DOWN(0, 1), LEFT(-1, 0), RIGHT(1, 0);
 
@@ -13,7 +11,12 @@ data class Cell(val x: Int, val y: Int) {
 }
 
 /** The rules of Snake on a cols x rows board with solid walls. No Android code, so it is unit-tested directly. */
-class Game(val cols: Int, val rows: Int, private val random: Random = Random.Default) {
+class Game(val cols: Int, val rows: Int, seed: Long) {
+    /** This game's seed. With the moves made, it is all that is needed to replay the game exactly. */
+    var seed = seed
+        private set
+    private var rng = Rng(seed)
+
     /** Head first. */
     val snake = ArrayDeque<Cell>()
     var dir = Dir.RIGHT
@@ -38,10 +41,13 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
 
     init {
         require(cols >= 5 && rows >= 5) { "board too small: ${cols}x$rows" }
-        reset()
+        reset(seed)
     }
 
-    fun reset() {
+    /** Starts a new game. Each game gets its own seed, set before the first apple is drawn. */
+    fun reset(seed: Long) {
+        this.seed = seed
+        rng = Rng(seed)
         snake.clear()
         val y = rows / 2
         for (i in 0 until 3) snake.addLast(Cell(cols / 4 + 2 - i, y))
@@ -141,7 +147,7 @@ class Game(val cols: Int, val rows: Int, private val random: Random = Random.Def
         val taken = snake.toHashSet()
         val free = cols * rows - taken.size
         if (free == 0) return null
-        var n = random.nextInt(free)
+        var n = rng.nextInt(free)
         for (y in 0 until rows) for (x in 0 until cols) {
             val c = Cell(x, y)
             if (c !in taken && n-- == 0) return c

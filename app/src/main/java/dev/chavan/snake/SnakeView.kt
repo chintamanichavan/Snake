@@ -148,7 +148,7 @@ class SnakeView(context: Context) : View(context) {
         )
         // The board size only changes if the window does; keep the game going if it still fits.
         if (game?.rows != l.rows) {
-            game = Game(l.cols, l.rows)
+            game = Game(l.cols, l.rows, newSeed())
             state = State.READY
             foodAt = clock()
         }
@@ -313,6 +313,9 @@ class SnakeView(context: Context) : View(context) {
         return true
     }
 
+    /** A fresh seed for each classic game; only its value needs recording, not where it came from. */
+    private fun newSeed() = kotlin.random.Random.nextLong()
+
     /** The way turns are measured against, or null before the game starts when any way goes. */
     private fun heading(): Dir? = if (state == State.READY) null else game?.heading
 
@@ -344,7 +347,7 @@ class SnakeView(context: Context) : View(context) {
         when (state) {
             // Ignore presses until the card shows, so a panicked swipe can't skip past it.
             State.OVER -> if (clock() - crashAt >= OVERLAY_DELAY_MS) {
-                g.reset()
+                g.reset(newSeed())
                 particles.clear()
                 newBest = false
                 foodAt = clock()
