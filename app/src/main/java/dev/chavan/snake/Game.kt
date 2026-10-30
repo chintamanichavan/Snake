@@ -1,9 +1,14 @@
 package dev.chavan.snake
 
-enum class Dir(val dx: Int, val dy: Int) {
-    UP(0, -1), DOWN(0, 1), LEFT(-1, 0), RIGHT(1, 0);
+enum class Dir(val dx: Int, val dy: Int, val letter: Char) {
+    UP(0, -1, 'U'), DOWN(0, 1, 'D'), LEFT(-1, 0, 'L'), RIGHT(1, 0, 'R');
 
     fun isOpposite(other: Dir) = dx == -other.dx && dy == -other.dy
+
+    companion object {
+        fun of(letter: Char): Dir = values().firstOrNull { it.letter == letter }
+            ?: throw IllegalArgumentException("not a direction: '$letter'")
+    }
 }
 
 data class Cell(val x: Int, val y: Int) {
@@ -39,6 +44,12 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
     // which stops a quick pair of turns from reversing the snake into itself.
     private val turns = ArrayDeque<Dir>()
 
+    // The game so far as plain text: the facing at the start (R, or L if aim() turned the snake
+    // end to end), then the direction of every step, the crashing one included. With the seed,
+    // that is enough to replay the game exactly.
+    private val moves = StringBuilder()
+    val recording: String get() = moves.toString()
+
     init {
         require(cols >= 5 && rows >= 5) { "board too small: ${cols}x$rows" }
         reset(seed)
@@ -55,6 +66,7 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
         leftTail = null
         retakeable = false
         fresh = true
+        moves.setLength(0)
         turns.clear()
         score = 0
         over = false
@@ -93,6 +105,7 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
         if (!retakeable || tail == null || turns.isNotEmpty() || d == dir || d.isOpposite(dir)) return false
         snake.removeFirst()
         snake.addLast(tail)
+        moves.setLength(moves.length - 1) // the redone step replaces the one it undoes
         dir = d
         step()
         retakeable = false
@@ -109,12 +122,29 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
         turns.addLast(d)
     }
 
+    /** Replay only: before the first step, face the way a recording started. */
+    internal fun face(d: Dir) {
+        if (fresh && d.isOpposite(dir)) {
+            snake.reverse()
+            dir = d
+        }
+    }
+
+    /** Replay only: take one step in a recorded direction, which was already checked when it was played. */
+    internal fun force(d: Dir) {
+        turns.clear()
+        turns.addLast(d)
+        step()
+    }
+
     /** Advances one tick. Returns true if the snake ate. */
     fun step(): Boolean {
         if (over) return false
+        if (fresh) moves.append(dir.letter)
         fresh = false
         retakeable = false
         turns.removeFirstOrNull()?.let { dir = it }
+        moves.append(dir.letter)
         val next = snake.first() + dir
         val eats = next == food
         if (next.x !in 0 until cols || next.y !in 0 until rows) {
