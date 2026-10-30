@@ -1,5 +1,7 @@
 package dev.chavan.snake
 
+import java.time.LocalDate
+
 enum class Dir(val dx: Int, val dy: Int, val letter: Char) {
     UP(0, -1, 'U'), DOWN(0, 1, 'D'), LEFT(-1, 0, 'L'), RIGHT(1, 0, 'R');
 
@@ -15,8 +17,14 @@ data class Cell(val x: Int, val y: Int) {
     operator fun plus(d: Dir) = Cell(x + d.dx, y + d.dy)
 }
 
+/**
+ * The seed for a day's board: the day number, in UTC so that everyone everywhere is on the same
+ * board at the same moment. A game keeps the date it started on, even across midnight.
+ */
+fun dailySeed(date: LocalDate): Long = date.toEpochDay()
+
 /** The rules of Snake on a cols x rows board with solid walls. No Android code, so it is unit-tested directly. */
-class Game(val cols: Int, val rows: Int, seed: Long) {
+class Game(val cols: Int, val rows: Int, seed: Long, val daily: Boolean = false) {
     /** This game's seed. With the moves made, it is all that is needed to replay the game exactly. */
     var seed = seed
         private set
@@ -71,7 +79,7 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
         score = 0
         over = false
         won = false
-        food = randomEmptyCell()
+        food = nextFood()
     }
 
     /** True until the first step, while the snake can still be pointed any way, including backwards. */
@@ -160,7 +168,7 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
         snake.addFirst(next)
         if (eats) {
             score++
-            food = randomEmptyCell()
+            food = nextFood()
             if (food == null) {
                 won = true
                 over = true
@@ -171,6 +179,34 @@ class Game(val cols: Int, val rows: Int, seed: Long) {
             retakeable = true
         }
         return eats
+    }
+
+    /** The next apple: in daily mode the score-th apple of the day, otherwise any free square. */
+    private fun nextFood(): Cell? = if (daily) dailyCell(score) else randomEmptyCell()
+
+    /**
+     * Apple k of a daily board. It is drawn from all squares by a stream of its own, seeded by the
+     * day and k, so every player's k-th apple lands on the same square whenever that square is
+     * free, however their snakes differ. If the snake covers it, draw again up to 8 times, then
+     * take the next free square in reading order: deterministic, and it always ends.
+     */
+    internal fun dailyCell(k: Int): Cell? {
+        val total = cols * rows
+        val taken = snake.toHashSet()
+        if (taken.size >= total) return null
+        val r = Rng(seed xor (k.toLong() * -0x61c8864680b583ebL))
+        var i = 0
+        repeat(8) {
+            i = r.nextInt(total)
+            val c = Cell(i % cols, i / cols)
+            if (c !in taken) return c
+        }
+        repeat(total) {
+            i = (i + 1) % total
+            val c = Cell(i % cols, i / cols)
+            if (c !in taken) return c
+        }
+        return null
     }
 
     private fun randomEmptyCell(): Cell? {
