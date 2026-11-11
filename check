@@ -1,0 +1,52 @@
+#!/bin/bash
+# ./check: JVM unit tests (rules and layout) and the Stop hook's own tests.
+# Not covered: the UI tests (connectedDebugAndroidTest, need a running emulator).
+# Contract: no arguments, any cwd, exit 0 green, 1 a test failed, 2 could not run
+# (missing JDK or SDK, or a suite that did not finish within its limit).
+cd "$(dirname "$0")" || exit 2
+
+# Own environment, so a GUI git client or a bare hook behaves like a terminal.
+PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+jbr="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+[ -z "$JAVA_HOME" ] && [ -d "$jbr" ] && export JAVA_HOME="$jbr"
+limit=300   # seconds per suite
+# Tests swap these in. Ignored unless asked for, so a stray variable cannot weaken the check.
+if [ "$CHECK_TEST" = 1 ]; then
+  PATH="${CHECK_PATH:-$PATH}"
+  limit="${CHECK_LIMIT:-$limit}"
+fi
+
+# run NAME COMMAND...: 0 pass, 1 fail, 2 could not run or did not finish. The command
+# returns 3 for "could not run". macOS has no timeout(1), so a watchdog stops the suite's
+# whole process group (set -m gives each job its own).
+run() {
+  local name=$1 pid dog st; shift
+  set -m
+  "$@" </dev/null &
+  pid=$!
+  ( sleep "$limit"; kill -TERM -- -"$pid" ) >/dev/null 2>&1 &
+  dog=$!
+  wait "$pid"; st=$?
+  { kill -TERM -- -"$dog"; wait "$dog"; } 2>/dev/null   # quietly: job control reports kills
+  set +m
+  if [ "$st" -ge 128 ]; then echo "check: $name did not finish in ${limit}s" >&2; return 2; fi
+  if [ "$st" = 3 ]; then echo "check: $name could not run" >&2; return 2; fi
+  if [ "$st" = 0 ]; then echo "ok   $name"; return 0; fi
+  echo "FAIL $name"; return 1
+}
+
+# Gradle fails the same way for a broken test and a missing SDK; only evidence that the code
+# is broken (a JUnit FAILED line, Gradle's count, a Kotlin error) counts as a failure.
+unit() {
+  local log=build/check-unit.log broken='^[A-Za-z0-9_.$]+ > .+ FAILED$|tests completed, [0-9]+ failed|^e: '
+  mkdir -p build
+  ./gradlew testDebugUnitTest --console=plain >"$log" 2>&1 && return 0
+  if grep -Eq "$broken" "$log"; then grep -E "$broken" "$log" | head -40; return 1; fi
+  tail -20 "$log"; return 3
+}
+
+rc=0
+note() { if [ "$1" = 1 ]; then rc=1; elif [ "$1" = 2 ] && [ "$rc" = 0 ]; then rc=2; fi; }
+run unit unit;                                  note $?
+run stop-hook bash .claude/hooks/test_stop_tests.sh; note $?
+exit "$rc"
