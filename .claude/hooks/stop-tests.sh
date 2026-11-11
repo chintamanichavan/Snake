@@ -42,7 +42,9 @@ pid=$!
 dog=$!
 wait "$pid"
 status=$?
-kill -TERM -- -"$dog" 2>/dev/null
+# Reap the stopped watchdog with stderr closed: job control would report it as Terminated,
+# and that line would reach Claude with the block message.
+{ kill -TERM -- -"$dog"; wait "$dog"; } 2>/dev/null
 [ $status = 0 ] && exit 0
 if [ $status -ge 128 ]; then
   printf 'stop hook: tests did not finish in %ss and were stopped. Not a pass.\n' "$limit" >&2

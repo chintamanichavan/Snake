@@ -34,6 +34,7 @@ check "passing tests let Claude stop"            0 "$first" true
 check "failing tests block the stop"             2 "$first" "$red" "GameTest > wall FAILED"
 check "compile error blocks with file and line"  2 "$first" "echo 'e: file:///x/Game.kt:3:1 Unresolved reference foo'; false" "Game.kt:3:1"
 check "block message names the command"          2 "$first" "$red # marker123" "marker123"
+check "block message has no job-control noise"   2 "$first" "$red" "" "Terminated"
 check "summary is capped at 40 lines"            2 "$first" "i=1; while [ \$i -le 100 ]; do echo \"T > t\$i FAILED\"; i=\$((i+1)); done; false" "T > t40 FAILED" "T > t41 FAILED"
 
 # Setup problems are not test failures: tell the user, do not send Claude to fix them.
