@@ -38,9 +38,9 @@ expect "no Android SDK exits 2, not 1" 2 "could not run" -- env ANDROID_HOME= AN
 cp "$D/local.properties" "$c/"
 
 # A hung suite is stopped by check's own limit and leaves nothing running.
-printf '#!/bin/bash\nsleep 37\n' > "$c/.claude/hooks/test_stop_tests.sh"
+printf '#!/bin/bash\nsleep 3704\n' > "$c/.claude/hooks/test_stop_tests.sh"
 expect "a hung suite exits 2" 2 "did not finish" -- env CHECK_TEST=1 CHECK_LIMIT=20 "$c/check"
-pgrep -qx -f 'sleep 37' && bad "hung suite left running" || ok "hung suite is killed"
+pgrep -qx -f 'sleep 3704' && bad "hung suite left running" || ok "hung suite is killed"
 rm -rf "$c"
 
 [ "$fail" = 0 ] && echo "all passed"
